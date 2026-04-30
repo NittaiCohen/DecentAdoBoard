@@ -1,0 +1,15 @@
+@import "tailwindcss";
+
+.react-flow__controls button {
+  background-color: #1f2937;
+  color: #e5e7eb;
+  border-bottom: 1px solid #374151;
+}
+
+.react-flow__controls button:hover {
+  background-color: #374151;
+}
+
+.react-flow__controls button svg {
+  fill: currentColor;
+}
