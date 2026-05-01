@@ -621,7 +621,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
           .filter((r): r is { start: number; end: number } => r !== null);
         const minSpanX = Math.min(colX, ...spannedRanges.map((r) => r.start));
         const maxSpanX = Math.max(colX + MIN_COLUMN_WIDTH, ...spannedRanges.map((r) => r.end));
-        const spanWidth = maxSpanX - minSpanX + GROUP_PADDING * 2;
+        const spanWidth = maxSpanX - minSpanX;
         const isExpanded = expandedParents.has(workItem.id);
 
         const multiSprintExtent: [[number, number], [number, number]] = [
