@@ -7,9 +7,9 @@ import type { SprintDividerData } from "../components/SprintDivider";
 import type { ParentGroupData } from "../components/ParentGroup";
 import { computeActionableSet } from "./actionable";
 
-const NODE_HEIGHT = 80;
+export const NODE_HEIGHT = 80;
 const NODE_GAP_X = 60;
-const NODE_GAP_Y = 20;
+export const NODE_GAP_Y = 20;
 const SPRINT_PADDING = 40;
 const MIN_COLUMN_WIDTH = 1200;
 const TOP_OFFSET = 60;
@@ -17,7 +17,12 @@ const COLUMN_STRIDE = MIN_COLUMN_WIDTH + NODE_GAP_X;
 const SUB_COLUMN_WIDTH = 280;
 const SUB_COLUMN_STRIDE = SUB_COLUMN_WIDTH + NODE_GAP_X;
 
-type AnyNodeData = WorkItemNodeData | SprintDividerData | ParentGroupData;
+type AnyNodeData = WorkItemNodeData | SprintDividerData | ParentGroupData | DragGhostData;
+
+export interface DragGhostData extends Record<string, unknown> {
+  width: number;
+  height: number;
+}
 
 type CoordExtent = [[number, number], [number, number]];
 
@@ -29,6 +34,9 @@ interface LayoutNode {
   parentId?: string;
   extent?: "parent" | CoordExtent;
   draggable?: boolean;
+  selectable?: boolean;
+  focusable?: boolean;
+  className?: string;
   style?: Record<string, unknown>;
 }
 
@@ -846,10 +854,6 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
         const isExpanded = expandedParents.has(workItem.id);
 
         if (isParent && isExpanded) {
-          const colExtent: [[number, number], [number, number]] = [
-            [colX, TOP_OFFSET],
-            [colX + MIN_COLUMN_WIDTH, Y_EXTENT_MAX],
-          ];
           const { width: gw, height: gh } = renderExpandedGroup(
             workItem,
             colX,
@@ -861,7 +865,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
             expandedParents,
             doneStates,
             actionableSet,
-            colExtent,
+            undefined,
           );
           // gw tracked but column width is fixed at MIN_COLUMN_WIDTH
           void gw;
