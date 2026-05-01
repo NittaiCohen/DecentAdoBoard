@@ -16,11 +16,11 @@ export interface ParentGroupData extends Record<string, unknown> {
 export type ParentGroupNode = Node<ParentGroupData, "parentGroup">;
 
 const TYPE_BORDER: Record<string, string> = {
-  "Bug": "border-red-500",
-  "Task": "border-yellow-500",
+  Bug: "border-red-500",
+  Task: "border-yellow-500",
   "User Story": "border-blue-500",
-  "Feature": "border-purple-500",
-  "Epic": "border-orange-500",
+  Feature: "border-purple-500",
+  Epic: "border-orange-500",
   "Product Backlog Item": "border-blue-500",
 };
 

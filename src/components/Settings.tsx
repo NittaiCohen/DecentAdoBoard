@@ -44,9 +44,7 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
       setPat(result.pat);
       savePat(result.pat, result.valid_to);
       localStorage.setItem("ado_organization", result.organization);
-      setGenResult(
-        `PAT created for "${result.organization}", valid until ${result.valid_to}`
-      );
+      setGenResult(`PAT created for "${result.organization}", valid until ${result.valid_to}`);
     } catch (err) {
       const msg = String(err);
       // Backend returns "MULTIPLE_ORGS:org1,org2,..." when multiple orgs found
@@ -68,9 +66,7 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
         onSubmit={(e) => void handleSubmit(e)}
         className="bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-xl"
       >
-        <h1 className="text-xl font-bold text-gray-100 mb-2">
-          DecentAdoBoard
-        </h1>
+        <h1 className="text-xl font-bold text-gray-100 mb-2">DecentAdoBoard</h1>
         <p className="text-sm text-gray-400 mb-6">
           Enter a PAT manually, or generate one automatically using Azure CLI.
         </p>
@@ -91,15 +87,12 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
 
         <div className="mt-4 border-t border-gray-700 pt-4">
           <p className="text-xs text-gray-500 mb-2">
-            Or generate via Azure CLI (requires{" "}
-            <code className="text-gray-400">az login</code>)
+            Or generate via Azure CLI (requires <code className="text-gray-400">az login</code>)
           </p>
 
           {orgChoices.length > 0 ? (
             <div className="space-y-2">
-              <p className="text-sm text-gray-300">
-                Multiple organizations found. Select one:
-              </p>
+              <p className="text-sm text-gray-300">Multiple organizations found. Select one:</p>
               <ComboBox
                 value={selectedOrg}
                 onChange={setSelectedOrg}
@@ -128,16 +121,10 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
         </div>
 
         {genResult && (
-          <p className="mt-3 text-sm text-green-400 bg-green-900/30 rounded p-2">
-            {genResult}
-          </p>
+          <p className="mt-3 text-sm text-green-400 bg-green-900/30 rounded p-2">{genResult}</p>
         )}
 
-        {error && (
-          <p className="mt-3 text-sm text-red-400 bg-red-900/30 rounded p-2">
-            {error}
-          </p>
-        )}
+        {error && <p className="mt-3 text-sm text-red-400 bg-red-900/30 rounded p-2">{error}</p>}
 
         <button
           type="submit"

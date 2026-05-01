@@ -28,9 +28,15 @@ import { isObject } from "lodash-es";
 function isSavedConfig(value: unknown): value is SavedConfig {
   return (
     isObject(value) &&
-    "organization" in value && typeof value.organization === "string" && value.organization !== "" &&
-    "project" in value && typeof value.project === "string" && value.project !== "" &&
-    "areaPath" in value && typeof value.areaPath === "string" && value.areaPath !== ""
+    "organization" in value &&
+    typeof value.organization === "string" &&
+    value.organization !== "" &&
+    "project" in value &&
+    typeof value.project === "string" &&
+    value.project !== "" &&
+    "areaPath" in value &&
+    typeof value.areaPath === "string" &&
+    value.areaPath !== ""
   );
 }
 
@@ -42,7 +48,9 @@ export function getSavedConfig(): SavedConfig | null {
     if (isSavedConfig(config)) {
       return config;
     }
-  } catch { /* ignore invalid JSON */ }
+  } catch {
+    /* ignore invalid JSON */
+  }
   return null;
 }
 

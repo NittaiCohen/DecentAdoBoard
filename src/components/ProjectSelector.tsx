@@ -21,21 +21,30 @@ interface SavedConfig {
   areaPath: string;
 }
 
+function isSavedConfig(value: unknown): value is SavedConfig {
+  return (
+    isObject(value) &&
+    "organization" in value &&
+    typeof value.organization === "string" &&
+    "project" in value &&
+    typeof value.project === "string" &&
+    "areaPath" in value &&
+    typeof value.areaPath === "string"
+  );
+}
+
 function loadSavedConfig(): SavedConfig {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const config: unknown = JSON.parse(saved);
-      if (
-        isObject(config) &&
-        "organization" in config && typeof config.organization === "string" &&
-        "project" in config && typeof config.project === "string" &&
-        "areaPath" in config && typeof config.areaPath === "string"
-      ) {
-        return { organization: config.organization, project: config.project, areaPath: config.areaPath };
+      if (isSavedConfig(config)) {
+        return config;
       }
     }
-  } catch { /* ignore invalid JSON */ }
+  } catch {
+    /* ignore invalid JSON */
+  }
   return { organization: "", project: "", areaPath: "" };
 }
 
@@ -43,13 +52,10 @@ function saveConfig(config: SavedConfig) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 }
 
-export default function ProjectSelector({
-  onConfigured,
-  onBack,
-}: ProjectSelectorProps) {
+export default function ProjectSelector({ onConfigured, onBack }: ProjectSelectorProps) {
   const [saved] = useState(loadSavedConfig);
   const [organization, setOrganization] = useState(
-    () => saved.organization || localStorage.getItem("ado_organization") || ""
+    () => saved.organization || localStorage.getItem("ado_organization") || "",
   );
   const [project, setProject] = useState(saved.project);
   const [areaPath, setAreaPath] = useState(saved.areaPath);
@@ -127,9 +133,7 @@ export default function ProjectSelector({
         onSubmit={(e) => void handleSubmit(e)}
         className="bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-xl"
       >
-        <h1 className="text-xl font-bold text-gray-100 mb-2">
-          Select Project
-        </h1>
+        <h1 className="text-xl font-bold text-gray-100 mb-2">Select Project</h1>
         <p className="text-sm text-gray-400 mb-6">
           Choose the organization, project, and area path to visualize.
         </p>
@@ -170,11 +174,7 @@ export default function ProjectSelector({
           />
         </div>
 
-        {error && (
-          <p className="mt-4 text-sm text-red-400 bg-red-900/30 rounded p-2">
-            {error}
-          </p>
-        )}
+        {error && <p className="mt-4 text-sm text-red-400 bg-red-900/30 rounded p-2">{error}</p>}
 
         <div className="mt-6 flex gap-3">
           <button

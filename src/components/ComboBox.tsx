@@ -28,9 +28,7 @@ export default function ComboBox({
   const safeOptions = options.filter((o): o is string => typeof o === "string" && o.length > 0);
 
   // When open and filter is empty, show all options; otherwise filter
-  const filtered = safeOptions.filter((o) =>
-    o.toLowerCase().includes(filter.toLowerCase())
-  );
+  const filtered = safeOptions.filter((o) => o.toLowerCase().includes(filter.toLowerCase()));
 
   const handleClickOutside = useCallback((e: MouseEvent) => {
     if (
@@ -65,9 +63,7 @@ export default function ComboBox({
       {label && (
         <label className="block text-sm font-medium text-gray-300 mb-1">
           {label}
-          {loading && (
-            <span className="ml-2 text-xs text-gray-500">Loading...</span>
-          )}
+          {loading && <span className="ml-2 text-xs text-gray-500">Loading...</span>}
         </label>
       )}
       <div className="relative">
@@ -100,12 +96,7 @@ export default function ComboBox({
             stroke="currentColor"
             viewBox="0 0 24 24"
           >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M19 9l-7 7-7-7"
-            />
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </button>
       </div>

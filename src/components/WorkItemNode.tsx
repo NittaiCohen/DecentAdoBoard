@@ -14,22 +14,22 @@ export interface WorkItemNodeData extends Record<string, unknown> {
 export type WorkItemNode = Node<WorkItemNodeData, "workItem">;
 
 const TYPE_COLORS: Record<string, string> = {
-  "Bug": "border-red-500 bg-red-950/50",
-  "Task": "border-yellow-500 bg-yellow-950/50",
+  Bug: "border-red-500 bg-red-950/50",
+  Task: "border-yellow-500 bg-yellow-950/50",
   "User Story": "border-blue-500 bg-blue-950/50",
-  "Feature": "border-purple-500 bg-purple-950/50",
-  "Epic": "border-orange-500 bg-orange-950/50",
+  Feature: "border-purple-500 bg-purple-950/50",
+  Epic: "border-orange-500 bg-orange-950/50",
   "Product Backlog Item": "border-blue-500 bg-blue-950/50",
 };
 
 const STATE_BADGES: Record<string, string> = {
-  "New": "bg-gray-600 text-gray-200",
-  "Active": "bg-blue-600 text-blue-100",
+  New: "bg-gray-600 text-gray-200",
+  Active: "bg-blue-600 text-blue-100",
   "In Progress": "bg-blue-600 text-blue-100",
-  "Resolved": "bg-green-700 text-green-100",
-  "Closed": "bg-green-800 text-green-100",
-  "Done": "bg-green-800 text-green-100",
-  "Removed": "bg-gray-700 text-gray-400",
+  Resolved: "bg-green-700 text-green-100",
+  Closed: "bg-green-800 text-green-100",
+  Done: "bg-green-800 text-green-100",
+  Removed: "bg-gray-700 text-gray-400",
 };
 
 function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
@@ -46,9 +46,7 @@ function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
 
       <div className="flex items-center gap-1.5 mb-1">
         <span className="text-[10px] font-mono text-gray-400">#{workItem.id}</span>
-        <span className={`text-[10px] px-1 py-0.5 rounded ${stateClass}`}>
-          {workItem.state}
-        </span>
+        <span className={`text-[10px] px-1 py-0.5 rounded ${stateClass}`}>{workItem.state}</span>
         {isParent && (
           <button
             onClick={(e) => {
@@ -63,14 +61,10 @@ function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
         )}
       </div>
 
-      <p className="text-xs text-gray-100 leading-tight line-clamp-2">
-        {workItem.title}
-      </p>
+      <p className="text-xs text-gray-100 leading-tight line-clamp-2">{workItem.title}</p>
 
       {workItem.assigned_to && (
-        <p className="text-[10px] text-gray-400 mt-1 truncate">
-          {workItem.assigned_to}
-        </p>
+        <p className="text-[10px] text-gray-400 mt-1 truncate">{workItem.assigned_to}</p>
       )}
     </div>
   );

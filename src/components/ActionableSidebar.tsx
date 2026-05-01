@@ -9,9 +9,7 @@ interface ActionableSidebarProps {
 function getActionableItems(boardData?: BoardData): WorkItem[] {
   if (!boardData) return [];
 
-  const stateMap = new Map(
-    boardData.work_items.map((wi) => [wi.id, wi.state])
-  );
+  const stateMap = new Map(boardData.work_items.map((wi) => [wi.id, wi.state]));
 
   const doneStates = new Set(["Done", "Closed", "Resolved", "Removed"]);
 
@@ -25,11 +23,7 @@ function getActionableItems(boardData?: BoardData): WorkItem[] {
   });
 }
 
-export default function ActionableSidebar({
-  isOpen,
-  onToggle,
-  boardData,
-}: ActionableSidebarProps) {
+export default function ActionableSidebar({ isOpen, onToggle, boardData }: ActionableSidebarProps) {
   const actionableItems = getActionableItems(boardData);
 
   return (
@@ -52,31 +46,20 @@ export default function ActionableSidebar({
             Ready to Work ({actionableItems.length})
           </h2>
           {actionableItems.length === 0 ? (
-            <p className="text-sm text-gray-500">
-              No actionable work items found.
-            </p>
+            <p className="text-sm text-gray-500">No actionable work items found.</p>
           ) : (
             <div className="space-y-2">
               {actionableItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-gray-700 rounded p-3 border border-gray-600"
-                >
+                <div key={item.id} className="bg-gray-700 rounded p-3 border border-gray-600">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-mono text-gray-400">
-                      #{item.id}
-                    </span>
+                    <span className="text-xs font-mono text-gray-400">#{item.id}</span>
                     <span className="text-xs px-1.5 py-0.5 rounded bg-gray-600 text-gray-300">
                       {item.work_item_type}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-100 leading-tight">
-                    {item.title}
-                  </p>
+                  <p className="text-sm text-gray-100 leading-tight">{item.title}</p>
                   {item.assigned_to && (
-                    <p className="text-xs text-gray-400 mt-1">
-                      {item.assigned_to}
-                    </p>
+                    <p className="text-xs text-gray-400 mt-1">{item.assigned_to}</p>
                   )}
                 </div>
               ))}

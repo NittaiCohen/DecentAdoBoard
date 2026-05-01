@@ -27,17 +27,13 @@ const nodeTypes: NodeTypes = {
 };
 
 export default function GraphView({ boardData }: GraphViewProps) {
-  const [expandedParents, setExpandedParents] = useState<Set<number>>(
-    () => new Set()
-  );
+  const [expandedParents, setExpandedParents] = useState<Set<number>>(() => new Set());
 
   // Expand all parents by default when board data loads
   useEffect(() => {
     if (!boardData) return;
     const childIds = new Set(
-      boardData.work_items
-        .filter((wi) => !isNil(wi.parent_id))
-        .map((wi) => wi.parent_id!)
+      boardData.work_items.filter((wi) => !isNil(wi.parent_id)).map((wi) => wi.parent_id!),
     );
     // Only add new parents (don't reset user collapses)
     setExpandedParents((prev) => {

@@ -44,10 +44,7 @@ type NodeIdMap = Map<number, string>;
 /**
  * Collect all descendant leaf iteration paths for a work item.
  */
-function collectDescendantIterPaths(
-  wi: WorkItem,
-  workItemMap: Map<number, WorkItem>
-): Set<string> {
+function collectDescendantIterPaths(wi: WorkItem, workItemMap: Map<number, WorkItem>): Set<string> {
   const paths = new Set<string>();
   const children = wi.children
     .map((cid) => workItemMap.get(cid))
@@ -73,7 +70,7 @@ function measureChildHeight(
   wi: WorkItem,
   workItemMap: Map<number, WorkItem>,
   expandedParents: Set<number>,
-  doneStates: Set<string>
+  doneStates: Set<string>,
 ): { height: number; width: number } {
   const isParent = wi.children.length > 0;
   const isExpanded = expandedParents.has(wi.id);
@@ -113,7 +110,7 @@ function renderExpandedGroup(
   workItemMap: Map<number, WorkItem>,
   expandedParents: Set<number>,
   doneStates: Set<string>,
-  columnExtent?: [[number, number], [number, number]]
+  columnExtent?: [[number, number], [number, number]],
 ): { width: number; height: number } {
   const childItems = wi.children
     .map((cid) => workItemMap.get(cid))
@@ -172,8 +169,15 @@ function renderExpandedGroup(
 
     if (childIsParent && childIsExpanded) {
       const dims = renderExpandedGroup(
-        child, GROUP_PADDING, childY, groupId,
-        nodes, nodeIdMap, workItemMap, expandedParents, doneStates
+        child,
+        GROUP_PADDING,
+        childY,
+        groupId,
+        nodes,
+        nodeIdMap,
+        workItemMap,
+        expandedParents,
+        doneStates,
       );
       childY += dims.height + NODE_GAP_Y;
     } else {
@@ -211,7 +215,7 @@ function renderExpandedGroup(
  */
 function findEarliestPath(
   paths: Set<string>,
-  iterationByPath: Map<string, { start_date?: string | null }>
+  iterationByPath: Map<string, { start_date?: string | null }>,
 ): string {
   let earliest: string | null = null;
   let earliestDate: string | null = null;
@@ -226,10 +230,7 @@ function findEarliestPath(
   return earliest ?? [...paths][0];
 }
 
-export function buildGraphLayout(
-  boardData: BoardData,
-  expandedParents: Set<number>
-): LayoutResult {
+export function buildGraphLayout(boardData: BoardData, expandedParents: Set<number>): LayoutResult {
   const { work_items, iterations } = boardData;
   const nodes: LayoutNode[] = [];
   const edges: Edge[] = [];
@@ -241,9 +242,7 @@ export function buildGraphLayout(
 
   const workItemMap = new Map(work_items.map((wi) => [wi.id, wi]));
   const doneStates = new Set(["Done", "Closed", "Resolved", "Removed"]);
-  const iterationByPath = new Map(
-    iterations.map((it) => [it.path, it])
-  );
+  const iterationByPath = new Map(iterations.map((it) => [it.path, it]));
 
   // --- Phase 1: Identify multi-sprint parents (always, regardless of expanded) ---
   const multiSprintParentIds = new Set<number>();
@@ -362,7 +361,10 @@ export function buildGraphLayout(
         const spanWidth = maxSpanX - minSpanX + GROUP_PADDING * 2;
         const isExpanded = expandedParents.has(wi.id);
 
-        const multiSprintExtent: [[number, number], [number, number]] = [[minSpanX, TOP_OFFSET], [minSpanX + spanWidth, 10000]];
+        const multiSprintExtent: [[number, number], [number, number]] = [
+          [minSpanX, TOP_OFFSET],
+          [minSpanX + spanWidth, 10000],
+        ];
 
         if (isExpanded) {
           // Expanded: spanning container with children in column slots
@@ -427,7 +429,7 @@ export function buildGraphLayout(
             // Extent relative to parent group — constrain to this column slot
             const slotExtent: [[number, number], [number, number]] = [
               [slotX, HEADER_HEIGHT],
-              [slotX + MIN_COLUMN_WIDTH - GROUP_PADDING * 2, groupHeight]
+              [slotX + MIN_COLUMN_WIDTH - GROUP_PADDING * 2, groupHeight],
             ];
             let childY = HEADER_HEIGHT + GROUP_PADDING;
 
@@ -437,8 +439,15 @@ export function buildGraphLayout(
 
               if (childIsParent && childIsExpanded) {
                 const dims = renderExpandedGroup(
-                  child, slotX, childY, groupId,
-                  nodes, nodeIdMap, workItemMap, expandedParents, doneStates
+                  child,
+                  slotX,
+                  childY,
+                  groupId,
+                  nodes,
+                  nodeIdMap,
+                  workItemMap,
+                  expandedParents,
+                  doneStates,
                 );
                 childY += dims.height + NODE_GAP_Y;
               } else {
@@ -512,11 +521,21 @@ export function buildGraphLayout(
         const isExpanded = expandedParents.has(wi.id);
 
         if (isParent && isExpanded) {
-          const colExtent: [[number, number], [number, number]] = [[colX, TOP_OFFSET], [colX + MIN_COLUMN_WIDTH, 10000]];
+          const colExtent: [[number, number], [number, number]] = [
+            [colX, TOP_OFFSET],
+            [colX + MIN_COLUMN_WIDTH, 10000],
+          ];
           const { width: gw, height: gh } = renderExpandedGroup(
-            wi, colX, currentY, undefined,
-            nodes, nodeIdMap, workItemMap, expandedParents, doneStates,
-            colExtent
+            wi,
+            colX,
+            currentY,
+            undefined,
+            nodes,
+            nodeIdMap,
+            workItemMap,
+            expandedParents,
+            doneStates,
+            colExtent,
           );
           // gw tracked but column width is fixed at MIN_COLUMN_WIDTH
           void gw;
@@ -524,7 +543,10 @@ export function buildGraphLayout(
         } else {
           const nodeId = `wi-${wi.id}`;
           nodeIdMap.set(wi.id, nodeId);
-          const extentBounds: CoordExtent = [[colX, TOP_OFFSET], [colX + MIN_COLUMN_WIDTH, 10000]];
+          const extentBounds: CoordExtent = [
+            [colX, TOP_OFFSET],
+            [colX + MIN_COLUMN_WIDTH, 10000],
+          ];
           nodes.push({
             id: nodeId,
             type: "workItem",
