@@ -42,7 +42,9 @@ function ParentGroupComponent({ data }: NodeProps<ParentGroupNode>) {
         <span className="text-[10px] px-1 py-0.5 rounded bg-gray-600 text-gray-200">
           {data.state}
         </span>
-        <span className="text-xs text-gray-100 truncate flex-1">{data.label}</span>
+        <span className="text-xs text-gray-100 truncate flex-1" title={data.label}>
+          {data.label}
+        </span>
         <button
           onClick={(e) => {
             e.stopPropagation();

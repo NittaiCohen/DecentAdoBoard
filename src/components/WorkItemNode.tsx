@@ -61,7 +61,9 @@ function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
         )}
       </div>
 
-      <p className="text-xs text-gray-100 leading-tight line-clamp-2">{workItem.title}</p>
+      <p className="text-xs text-gray-100 leading-tight line-clamp-2" title={workItem.title}>
+        {workItem.title}
+      </p>
 
       {workItem.assigned_to && (
         <p className="text-[10px] text-gray-400 mt-1 truncate">{workItem.assigned_to}</p>
