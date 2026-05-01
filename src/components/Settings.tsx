@@ -61,18 +61,20 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
   }
 
   return (
-    <div className="flex items-center justify-center h-screen w-screen bg-gray-900">
+    <div className="flex items-center justify-center h-screen w-screen bg-gray-50 dark:bg-gray-900">
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-xl"
+        className="bg-white dark:bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-xl"
       >
-        <h1 className="text-xl font-bold text-gray-100 mb-2">{"Decent ADO Board"}</h1>
-        <p className="text-sm text-gray-400 mb-6">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+          {"Decent ADO Board"}
+        </h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
           {"Enter a PAT manually, or generate one automatically using Azure CLI."}
         </p>
 
         <div>
-          <label className="block text-sm font-medium text-gray-300 mb-1">
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
             {"Personal Access Token"}
           </label>
           <input
@@ -80,21 +82,23 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
             value={pat}
             onChange={(e) => setPat(e.target.value)}
             placeholder="Enter your PAT"
-            className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 text-gray-100 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-3 py-2 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
             autoFocus
           />
         </div>
 
-        <div className="mt-4 border-t border-gray-700 pt-4">
-          <p className="text-xs text-gray-500 mb-2">
+        <div className="mt-4 border-t border-gray-300 dark:border-gray-700 pt-4">
+          <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
             {`Or generate via Azure CLI (requires `}
-            <code className="text-gray-400">{"az login"}</code>
+            <code className="text-gray-500 dark:text-gray-400">{"az login"}</code>
             {`)`}
           </p>
 
           {orgChoices.length > 0 ? (
             <div className="space-y-2">
-              <p className="text-sm text-gray-300">{"Multiple organizations found. Select one:"}</p>
+              <p className="text-sm text-gray-700 dark:text-gray-300">
+                {"Multiple organizations found. Select one:"}
+              </p>
               <ComboBox
                 value={selectedOrg}
                 onChange={setSelectedOrg}
@@ -105,7 +109,7 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
                 type="button"
                 onClick={() => void handleGenerate(selectedOrg)}
                 disabled={generating || !selectedOrg}
-                className="w-full bg-green-700 hover:bg-green-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-medium py-2 px-3 rounded transition-colors"
+                className="w-full bg-green-700 hover:bg-green-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-medium py-2 px-3 rounded transition-colors"
               >
                 {generating ? "Generating..." : "Generate PAT"}
               </button>
@@ -115,7 +119,7 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
               type="button"
               onClick={() => void handleGenerate()}
               disabled={generating}
-              className="w-full bg-green-700 hover:bg-green-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-medium py-2 px-3 rounded transition-colors"
+              className="w-full bg-green-700 hover:bg-green-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-medium py-2 px-3 rounded transition-colors"
             >
               {generating ? "Generating..." : "Generate PAT automatically"}
             </button>
@@ -123,15 +127,21 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
         </div>
 
         {genResult && (
-          <p className="mt-3 text-sm text-green-400 bg-green-900/30 rounded p-2">{genResult}</p>
+          <p className="mt-3 text-sm text-green-600 dark:text-green-400 bg-green-100/30 dark:bg-green-900/30 rounded p-2">
+            {genResult}
+          </p>
         )}
 
-        {error && <p className="mt-3 text-sm text-red-400 bg-red-900/30 rounded p-2">{error}</p>}
+        {error && (
+          <p className="mt-3 text-sm text-red-600 dark:text-red-400 bg-red-100/30 dark:bg-red-900/30 rounded p-2">
+            {error}
+          </p>
+        )}
 
         <button
           type="submit"
           disabled={loading || !pat}
-          className="mt-6 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded transition-colors"
+          className="mt-6 w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded transition-colors"
         >
           {loading ? "Authenticating..." : "Continue"}
         </button>

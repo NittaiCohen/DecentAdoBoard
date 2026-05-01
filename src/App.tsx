@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import GraphView from "./components/GraphView";
 import ActionableSidebar from "./components/ActionableSidebar";
+import ThemeToggle from "./components/ThemeToggle";
 import PatLogin from "./components/Settings";
 import ProjectSelector from "./components/ProjectSelector";
 import { useBoardData, setPatTauri, setConfigTauri } from "./hooks/useAdoData";
@@ -51,8 +52,8 @@ function App() {
 
   if (restoring) {
     return (
-      <div className="flex items-center justify-center h-screen w-screen bg-gray-900 text-gray-100">
-        <p className="text-gray-400">{"Restoring session..."}</p>
+      <div className="flex items-center justify-center h-screen w-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+        <p className="text-gray-500 dark:text-gray-400">{"Restoring session..."}</p>
       </div>
     );
   }
@@ -75,10 +76,10 @@ function App() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-screen w-screen bg-gray-900 text-gray-100">
+      <div className="flex items-center justify-center h-screen w-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4" />
-          <p className="text-gray-400">{"Loading board data from ADO..."}</p>
+          <p className="text-gray-500 dark:text-gray-400">{"Loading board data from ADO..."}</p>
         </div>
       </div>
     );
@@ -86,13 +87,13 @@ function App() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-screen w-screen bg-gray-900 text-gray-100">
-        <div className="bg-red-900/30 border border-red-700 rounded-lg p-6 max-w-md">
-          <h2 className="text-lg font-bold text-red-400 mb-2">{"Error"}</h2>
-          <p className="text-sm text-red-300">{String(error)}</p>
+      <div className="flex items-center justify-center h-screen w-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+        <div className="bg-red-100/30 dark:bg-red-900/30 border border-red-300 dark:border-red-700 rounded-lg p-6 max-w-md">
+          <h2 className="text-lg font-bold text-red-600 dark:text-red-400 mb-2">{"Error"}</h2>
+          <p className="text-sm text-red-700 dark:text-red-300">{String(error)}</p>
           <button
             onClick={() => setStep("project")}
-            className="mt-4 bg-gray-700 hover:bg-gray-600 text-gray-200 px-4 py-2 rounded"
+            className="mt-4 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 px-4 py-2 rounded"
           >
             {"Back to Settings"}
           </button>
@@ -102,16 +103,19 @@ function App() {
   }
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-gray-900 text-gray-100">
+    <div className="flex h-screen w-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       <div className="flex-1 relative">
         <GraphView boardData={boardData} />
         <button
           onClick={() => setStep("project")}
-          className="absolute top-3 left-3 z-10 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs font-medium px-3 py-1.5 rounded shadow transition-colors"
+          className="absolute top-3 left-3 z-10 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium px-3 py-1.5 rounded shadow transition-colors"
           title="Change project"
         >
           {"⚙ Change Project"}
         </button>
+        <div className="absolute top-3 right-3 z-10">
+          <ThemeToggle />
+        </div>
       </div>
       <ActionableSidebar
         isOpen={sidebarOpen}

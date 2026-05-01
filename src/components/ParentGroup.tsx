@@ -16,33 +16,44 @@ export interface ParentGroupData extends Record<string, unknown> {
 export type ParentGroupNode = Node<ParentGroupData, "parentGroup">;
 
 const TYPE_COLORS: Record<string, string> = {
-  Bug: "border-l-red-500 bg-red-950/30",
-  Task: "border-l-yellow-500 bg-yellow-950/30",
-  "User Story": "border-l-blue-500 bg-blue-950/30",
-  Feature: "border-l-purple-500 bg-purple-950/30",
-  Epic: "border-l-orange-500 bg-orange-950/30",
-  "Product Backlog Item": "border-l-blue-500 bg-blue-950/30",
+  Bug: "border-l-red-500 bg-red-100/30 dark:bg-red-950/30",
+  Task: "border-l-yellow-500 bg-yellow-100/30 dark:bg-yellow-950/30",
+  "User Story": "border-l-blue-500 bg-blue-100/30 dark:bg-blue-950/30",
+  Feature: "border-l-purple-500 bg-purple-100/30 dark:bg-purple-950/30",
+  Epic: "border-l-orange-500 bg-orange-100/30 dark:bg-orange-950/30",
+  "Product Backlog Item": "border-l-blue-500 bg-blue-100/30 dark:bg-blue-950/30",
 };
 
-const DEFAULT_COLORS = "border-l-gray-500 bg-gray-800/30";
+const DEFAULT_COLORS = "border-l-gray-500 bg-gray-100/30 dark:bg-gray-800/30";
 
 function ParentGroupComponent({ data }: NodeProps<ParentGroupNode>) {
   const colorClass = TYPE_COLORS[data.workItemType] ?? DEFAULT_COLORS;
 
   return (
     <div
-      className={`rounded-lg border-l-4 border border-gray-600/50 ${colorClass}`}
+      className={`rounded-lg border-l-4 border border-gray-300/50 dark:border-gray-600/50 ${colorClass}`}
       style={{ width: data.width, height: data.height }}
     >
-      <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-2 !h-2" />
-      <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-2 !h-2" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!bg-gray-500 dark:!bg-gray-400 !w-2 !h-2"
+      />
+      <Handle
+        type="source"
+        position={Position.Right}
+        className="!bg-gray-500 dark:!bg-gray-400 !w-2 !h-2"
+      />
 
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-600/50 bg-gray-700/40 rounded-t-lg">
-        <span className="text-[10px] font-mono text-gray-400">{`#${data.workItemId}`}</span>
-        <span className="text-[10px] px-1 py-0.5 rounded bg-gray-600 text-gray-200">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-300/50 dark:border-gray-600/50 bg-gray-200/40 dark:bg-gray-700/40 rounded-t-lg">
+        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">{`#${data.workItemId}`}</span>
+        <span className="text-[10px] px-1 py-0.5 rounded bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200">
           {data.state}
         </span>
-        <span className="text-xs text-gray-100 truncate flex-1" title={data.label}>
+        <span
+          className="text-xs text-gray-900 dark:text-gray-100 truncate flex-1"
+          title={data.label}
+        >
           {data.label}
         </span>
         <button
@@ -50,7 +61,7 @@ function ParentGroupComponent({ data }: NodeProps<ParentGroupNode>) {
             e.stopPropagation();
             data.onToggleExpand?.(data.workItemId);
           }}
-          className="text-[10px] text-gray-400 hover:text-gray-200 flex-shrink-0"
+          className="text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 flex-shrink-0"
           title="Collapse"
         >
           {`▼ ${data.doneChildCount}/${data.childCount}`}

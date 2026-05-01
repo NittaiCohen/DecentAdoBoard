@@ -128,13 +128,15 @@ export default function ProjectSelector({ onConfigured, onBack }: ProjectSelecto
   }
 
   return (
-    <div className="flex items-center justify-center h-screen w-screen bg-gray-900">
+    <div className="flex items-center justify-center h-screen w-screen bg-gray-50 dark:bg-gray-900">
       <form
         onSubmit={(e) => void handleSubmit(e)}
-        className="bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-xl"
+        className="bg-white dark:bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-xl"
       >
-        <h1 className="text-xl font-bold text-gray-100 mb-2">{"Select Project"}</h1>
-        <p className="text-sm text-gray-400 mb-6">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+          {"Select Project"}
+        </h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-6">
           {"Choose the organization, project, and area path to visualize."}
         </p>
 
@@ -174,20 +176,24 @@ export default function ProjectSelector({ onConfigured, onBack }: ProjectSelecto
           />
         </div>
 
-        {error && <p className="mt-4 text-sm text-red-400 bg-red-900/30 rounded p-2">{error}</p>}
+        {error && (
+          <p className="mt-4 text-sm text-red-600 dark:text-red-400 bg-red-100/30 dark:bg-red-900/30 rounded p-2">
+            {error}
+          </p>
+        )}
 
         <div className="mt-6 flex gap-3">
           <button
             type="button"
             onClick={onBack}
-            className="flex-shrink-0 bg-gray-700 hover:bg-gray-600 text-gray-200 font-medium py-2 px-4 rounded transition-colors"
+            className="flex-shrink-0 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 font-medium py-2 px-4 rounded transition-colors"
           >
             {"Back"}
           </button>
           <button
             type="submit"
             disabled={loading || !organization || !project || !areaPath}
-            className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded transition-colors"
+            className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded transition-colors"
           >
             {loading ? "Loading..." : "Load Board"}
           </button>

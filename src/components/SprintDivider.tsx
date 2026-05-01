@@ -15,10 +15,10 @@ export type SprintDividerNode = Node<SprintDividerData, "sprintDivider">;
 function SprintDividerComponent({ data }: NodeProps<SprintDividerNode>) {
   const bgClass = data.isCurrent
     ? "bg-blue-500/8 border border-blue-500/30"
-    : "bg-gray-700/5 border border-gray-700/20";
+    : "bg-gray-300/5 dark:bg-gray-700/5 border border-gray-300/20 dark:border-gray-700/20";
   const labelClass = data.isCurrent
     ? "bg-blue-600/80 text-blue-100 font-semibold"
-    : "bg-gray-700/50 text-gray-400";
+    : "bg-gray-300/50 dark:bg-gray-700/50 text-gray-500 dark:text-gray-400";
 
   return (
     <div

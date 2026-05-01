@@ -63,9 +63,11 @@ export default function ComboBox({
   return (
     <div ref={containerRef} className="relative">
       {label && (
-        <label className="block text-sm font-medium text-gray-300 mb-1">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
           {label}
-          {loading && <span className="ml-2 text-xs text-gray-500">{"Loading..."}</span>}
+          {loading && (
+            <span className="ml-2 text-xs text-gray-400 dark:text-gray-500">{"Loading..."}</span>
+          )}
         </label>
       )}
       <div className="relative">
@@ -85,14 +87,14 @@ export default function ComboBox({
           }}
           placeholder={placeholder}
           disabled={disabled}
-          className="w-full bg-gray-700 border border-gray-600 rounded px-3 py-2 pr-8 text-gray-100 placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="w-full bg-gray-100 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded px-3 py-2 pr-8 text-gray-900 dark:text-gray-100 placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
         />
         <button
           type="button"
           tabIndex={-1}
           onClick={toggleOpen}
           disabled={disabled}
-          className="absolute inset-y-0 right-0 flex items-center px-2 text-gray-400 hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="absolute inset-y-0 right-0 flex items-center px-2 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <svg
             className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`}
@@ -105,7 +107,7 @@ export default function ComboBox({
         </button>
       </div>
       {open && filtered.length > 0 && (
-        <ul className="absolute z-50 mt-1 w-full max-h-48 overflow-auto bg-gray-700 border border-gray-600 rounded shadow-lg">
+        <ul className="absolute z-50 mt-1 w-full max-h-48 overflow-auto bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded shadow-lg">
           {filtered.map((opt) => (
             <li
               key={opt}
@@ -116,7 +118,7 @@ export default function ComboBox({
                 setFilter("");
               }}
               className={`px-3 py-2 text-sm cursor-pointer hover:bg-blue-600 hover:text-white ${
-                opt === value ? "bg-blue-700 text-white" : "text-gray-200"
+                opt === value ? "bg-blue-700 text-white" : "text-gray-800 dark:text-gray-200"
               }`}
             >
               {opt}
@@ -125,7 +127,7 @@ export default function ComboBox({
         </ul>
       )}
       {open && safeOptions.length > 0 && filtered.length === 0 && (
-        <div className="absolute z-50 mt-1 w-full bg-gray-700 border border-gray-600 rounded shadow-lg px-3 py-2 text-sm text-gray-400">
+        <div className="absolute z-50 mt-1 w-full bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded shadow-lg px-3 py-2 text-sm text-gray-500 dark:text-gray-400">
           {"No matches"}
         </div>
       )}

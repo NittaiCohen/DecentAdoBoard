@@ -34,13 +34,13 @@ export default function ActionableSidebar({ isOpen, onToggle, boardData }: Actio
 
   return (
     <div
-      className={`flex-shrink-0 border-l border-gray-700 bg-gray-800 transition-all duration-300 ${
+      className={`flex-shrink-0 border-l border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 transition-all duration-300 ${
         isOpen ? "w-80" : "w-10"
       }`}
     >
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-center py-2 text-gray-400 hover:text-gray-200 hover:bg-gray-700 transition-colors"
+        className="w-full flex items-center justify-center py-2 text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
         title={isOpen ? "Collapse sidebar" : "Expand sidebar"}
       >
         {isOpen ? "▶" : "◀"}
@@ -48,24 +48,33 @@ export default function ActionableSidebar({ isOpen, onToggle, boardData }: Actio
 
       {isOpen && (
         <div className="p-4 overflow-y-auto h-[calc(100%-2.5rem)]">
-          <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide mb-3">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-3">
             {`Ready to Work (${actionableItems.length})`}
           </h2>
           {actionableItems.length === 0 ? (
-            <p className="text-sm text-gray-500">{"No actionable work items found."}</p>
+            <p className="text-sm text-gray-400 dark:text-gray-500">
+              {"No actionable work items found."}
+            </p>
           ) : (
             <div className="space-y-2">
               {actionableItems.map((item) => (
-                <div key={item.id} className="bg-gray-700 rounded p-3 border border-gray-600">
+                <div
+                  key={item.id}
+                  className="bg-gray-100 dark:bg-gray-700 rounded p-3 border border-gray-300 dark:border-gray-600"
+                >
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-mono text-gray-400">{`#${item.id}`}</span>
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-600 text-gray-300">
+                    <span className="text-xs font-mono text-gray-500 dark:text-gray-400">{`#${item.id}`}</span>
+                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
                       {item.work_item_type}
                     </span>
                   </div>
-                  <p className="text-sm text-gray-100 leading-tight">{item.title}</p>
+                  <p className="text-sm text-gray-900 dark:text-gray-100 leading-tight">
+                    {item.title}
+                  </p>
                   {item.assigned_to && (
-                    <p className="text-xs text-gray-400 mt-1">{item.assigned_to}</p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      {item.assigned_to}
+                    </p>
                   )}
                 </div>
               ))}
