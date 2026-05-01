@@ -21,7 +21,7 @@ interface LayoutNode {
   position: { x: number; y: number };
   data: AnyNodeData;
   parentId?: string;
-  extent?: "parent";
+  extent?: "parent" | [[number, number], [number, number]];
   draggable?: boolean;
   style?: Record<string, unknown>;
 }
@@ -109,7 +109,8 @@ function renderExpandedGroup(
   nodeIdMap: NodeIdMap,
   workItemMap: Map<number, WorkItem>,
   expandedParents: Set<number>,
-  doneStates: Set<string>
+  doneStates: Set<string>,
+  columnExtent?: [[number, number], [number, number]]
 ): { width: number; height: number } {
   const childItems = wi.children
     .map((cid) => workItemMap.get(cid))
@@ -156,6 +157,8 @@ function renderExpandedGroup(
   if (reactFlowParentId) {
     node.parentId = reactFlowParentId;
     node.extent = "parent";
+  } else if (columnExtent) {
+    node.extent = columnExtent;
   }
   nodes.push(node);
 
@@ -356,6 +359,8 @@ export function buildGraphLayout(
         const spanWidth = maxSpanX - minSpanX + GROUP_PADDING * 2;
         const isExpanded = expandedParents.has(wi.id);
 
+        const multiSprintExtent: [[number, number], [number, number]] = [[minSpanX, TOP_OFFSET], [minSpanX + spanWidth, 10000]];
+
         if (isExpanded) {
           // Expanded: spanning container with children in column slots
           const directChildren = wi.children
@@ -407,6 +412,7 @@ export function buildGraphLayout(
               onToggleExpand: undefined,
             },
             draggable: true,
+            extent: multiSprintExtent,
             style: { width: spanWidth, height: groupHeight },
           });
 
@@ -415,6 +421,11 @@ export function buildGraphLayout(
             const childColX = columnX.get(childIterPath);
             if (childColX == null) continue;
             const slotX = childColX - minSpanX + GROUP_PADDING;
+            // Extent relative to parent group — constrain to this column slot
+            const slotExtent: [[number, number], [number, number]] = [
+              [slotX, HEADER_HEIGHT],
+              [slotX + MIN_COLUMN_WIDTH - GROUP_PADDING * 2, groupHeight]
+            ];
             let childY = HEADER_HEIGHT + GROUP_PADDING;
 
             for (const child of children) {
@@ -439,7 +450,7 @@ export function buildGraphLayout(
                   type: "workItem",
                   position: { x: slotX, y: childY },
                   parentId: groupId,
-                  extent: "parent",
+                  extent: slotExtent,
                   data: {
                     workItem: child,
                     isParent: childIsParent,
@@ -481,6 +492,7 @@ export function buildGraphLayout(
               onToggleExpand: undefined,
             },
             draggable: true,
+            extent: multiSprintExtent,
             style: { width: spanWidth, height: collapsedHeight },
           });
 
@@ -497,9 +509,11 @@ export function buildGraphLayout(
         const isExpanded = expandedParents.has(wi.id);
 
         if (isParent && isExpanded) {
+          const colExtent: [[number, number], [number, number]] = [[colX, TOP_OFFSET], [colX + MIN_COLUMN_WIDTH, 10000]];
           const { width: gw, height: gh } = renderExpandedGroup(
             wi, colX, currentY, undefined,
-            nodes, nodeIdMap, workItemMap, expandedParents, doneStates
+            nodes, nodeIdMap, workItemMap, expandedParents, doneStates,
+            colExtent
           );
           // gw tracked but column width is fixed at MIN_COLUMN_WIDTH
           void gw;
@@ -511,6 +525,7 @@ export function buildGraphLayout(
             id: nodeId,
             type: "workItem",
             position: { x: colX, y: currentY },
+            extent: [[colX, TOP_OFFSET], [colX + MIN_COLUMN_WIDTH, 10000]] as [[number, number], [number, number]],
             data: {
               workItem: wi,
               isParent,
