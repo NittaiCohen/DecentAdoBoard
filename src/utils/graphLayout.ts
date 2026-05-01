@@ -44,14 +44,17 @@ type NodeIdMap = Map<number, string>;
 /**
  * Collect all descendant leaf iteration paths for a work item.
  */
-function collectDescendantIterPaths(wi: WorkItem, workItemMap: Map<number, WorkItem>): Set<string> {
+function collectDescendantIterPaths(
+  workItem: WorkItem,
+  workItemMap: Map<number, WorkItem>,
+): Set<string> {
   const paths = new Set<string>();
-  const children = wi.children
-    .map((cid) => workItemMap.get(cid))
-    .filter((c): c is WorkItem => c !== undefined);
+  const children = workItem.children
+    .map((childId) => workItemMap.get(childId))
+    .filter((childWorkItem): childWorkItem is WorkItem => childWorkItem !== undefined);
 
   if (children.length === 0) {
-    paths.add(wi.iteration_path);
+    paths.add(workItem.iteration_path);
     return paths;
   }
 
@@ -67,21 +70,21 @@ function collectDescendantIterPaths(wi: WorkItem, workItemMap: Map<number, WorkI
  * Measure the height a work item will occupy inside a group.
  */
 function measureChildHeight(
-  wi: WorkItem,
+  workItem: WorkItem,
   workItemMap: Map<number, WorkItem>,
   expandedParents: Set<number>,
   doneStates: Set<string>,
 ): { height: number; width: number } {
-  const isParent = wi.children.length > 0;
-  const isExpanded = expandedParents.has(wi.id);
+  const isParent = workItem.children.length > 0;
+  const isExpanded = expandedParents.has(workItem.id);
 
   if (!isParent || !isExpanded) {
     return { height: NODE_HEIGHT, width: CHILD_WIDTH };
   }
 
-  const childItems = wi.children
-    .map((cid) => workItemMap.get(cid))
-    .filter((c): c is WorkItem => c !== undefined);
+  const childItems = workItem.children
+    .map((childId) => workItemMap.get(childId))
+    .filter((childWorkItem): childWorkItem is WorkItem => childWorkItem !== undefined);
 
   let innerHeight = 0;
   let innerMaxWidth = CHILD_WIDTH;
@@ -101,7 +104,7 @@ function measureChildHeight(
  * Recursively render an expanded parent group (single-column).
  */
 function renderExpandedGroup(
-  wi: WorkItem,
+  workItem: WorkItem,
   x: number,
   y: number,
   reactFlowParentId: string | undefined,
@@ -112,9 +115,9 @@ function renderExpandedGroup(
   doneStates: Set<string>,
   columnExtent?: [[number, number], [number, number]],
 ): { width: number; height: number } {
-  const childItems = wi.children
-    .map((cid) => workItemMap.get(cid))
-    .filter((c): c is WorkItem => c !== undefined);
+  const childItems = workItem.children
+    .map((childId) => workItemMap.get(childId))
+    .filter((childWorkItem): childWorkItem is WorkItem => childWorkItem !== undefined);
 
   let childAreaHeight = 0;
   let childMaxWidth = CHILD_WIDTH;
@@ -128,24 +131,24 @@ function renderExpandedGroup(
   const groupWidth = childMaxWidth + GROUP_PADDING * 2;
   const groupHeight = HEADER_HEIGHT + GROUP_PADDING * 2 + childAreaHeight;
 
-  const doneChildCount = wi.children.filter((cid) => {
-    const c = workItemMap.get(cid);
-    return c && doneStates.has(c.state);
+  const doneChildCount = workItem.children.filter((childId) => {
+    const childWorkItem = workItemMap.get(childId);
+    return childWorkItem && doneStates.has(childWorkItem.state);
   }).length;
 
-  const groupId = `group-${wi.id}`;
-  nodeIdMap.set(wi.id, groupId);
+  const groupId = `group-${workItem.id}`;
+  nodeIdMap.set(workItem.id, groupId);
 
   const node: LayoutNode = {
     id: groupId,
     type: "parentGroup",
     position: { x, y },
     data: {
-      label: wi.title,
-      workItemId: wi.id,
-      workItemType: wi.work_item_type,
-      state: wi.state,
-      childCount: wi.children.length,
+      label: workItem.title,
+      workItemId: workItem.id,
+      workItemType: workItem.work_item_type,
+      state: workItem.state,
+      childCount: workItem.children.length,
       doneChildCount,
       width: groupWidth,
       height: groupHeight,
@@ -181,9 +184,9 @@ function renderExpandedGroup(
       );
       childY += dims.height + NODE_GAP_Y;
     } else {
-      const childDoneCount = child.children.filter((cid) => {
-        const c = workItemMap.get(cid);
-        return c && doneStates.has(c.state);
+      const childDoneCount = child.children.filter((childId) => {
+        const childWorkItem = workItemMap.get(childId);
+        return childWorkItem && doneStates.has(childWorkItem.state);
       }).length;
 
       const childNodeId = `wi-${child.id}`;
@@ -240,7 +243,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
     return { nodes, edges };
   }
 
-  const workItemMap = new Map(work_items.map((wi) => [wi.id, wi]));
+  const workItemMap = new Map(work_items.map((workItem) => [workItem.id, workItem]));
   const doneStates = new Set(["Done", "Closed", "Resolved", "Removed"]);
   const iterationByPath = new Map(iterations.map((it) => [it.path, it]));
 
@@ -252,31 +255,31 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
 
   function markDescendants(id: number) {
     multiSprintDescendantIds.add(id);
-    const wi = workItemMap.get(id);
-    if (wi) {
-      for (const cid of wi.children) {
-        markDescendants(cid);
+    const workItem = workItemMap.get(id);
+    if (workItem) {
+      for (const childId of workItem.children) {
+        markDescendants(childId);
       }
     }
   }
 
-  for (const wi of work_items) {
-    if (wi.parent_id && workItemMap.has(wi.parent_id)) {
+  for (const workItem of work_items) {
+    if (workItem.parent_id && workItemMap.has(workItem.parent_id)) {
       continue;
     }
-    if (!MULTI_SPRINT_TYPES.has(wi.work_item_type)) {
+    if (!MULTI_SPRINT_TYPES.has(workItem.work_item_type)) {
       continue;
     }
-    if (wi.children.length === 0) {
+    if (workItem.children.length === 0) {
       continue;
     }
 
-    const descendantPaths = collectDescendantIterPaths(wi, workItemMap);
+    const descendantPaths = collectDescendantIterPaths(workItem, workItemMap);
     if (descendantPaths.size >= 2) {
-      multiSprintParentIds.add(wi.id);
-      multiSprintPaths.set(wi.id, descendantPaths);
-      for (const cid of wi.children) {
-        markDescendants(cid);
+      multiSprintParentIds.add(workItem.id);
+      multiSprintPaths.set(workItem.id, descendantPaths);
+      for (const childId of workItem.children) {
+        markDescendants(childId);
       }
     }
   }
@@ -284,9 +287,9 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   // --- Phase 2: Determine columns and pre-compute positions ---
   // Collect iteration paths from non-multi-sprint-parent items
   const allIterPaths = new Set<string>();
-  for (const wi of work_items) {
-    if (!multiSprintParentIds.has(wi.id)) {
-      allIterPaths.add(wi.iteration_path);
+  for (const workItem of work_items) {
+    if (!multiSprintParentIds.has(workItem.id)) {
+      allIterPaths.add(workItem.iteration_path);
     }
   }
 
@@ -319,26 +322,30 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   // Multi-sprint parents go into their earliest descendant's column
   const iterationGroups = new Map<string, WorkItem[]>();
 
-  for (const wi of work_items) {
+  for (const workItem of work_items) {
     // Skip descendants of multi-sprint parents
-    if (multiSprintDescendantIds.has(wi.id)) {
+    if (multiSprintDescendantIds.has(workItem.id)) {
       continue;
     }
     // Skip children of non-multi-sprint parents
-    if (wi.parent_id && workItemMap.has(wi.parent_id) && !multiSprintParentIds.has(wi.id)) {
+    if (
+      workItem.parent_id &&
+      workItemMap.has(workItem.parent_id) &&
+      !multiSprintParentIds.has(workItem.id)
+    ) {
       continue;
     }
 
     let homeCol: string;
-    if (multiSprintParentIds.has(wi.id)) {
-      const descPaths = multiSprintPaths.get(wi.id)!;
+    if (multiSprintParentIds.has(workItem.id)) {
+      const descPaths = multiSprintPaths.get(workItem.id)!;
       homeCol = findEarliestPath(descPaths, iterationByPath);
     } else {
-      homeCol = wi.iteration_path;
+      homeCol = workItem.iteration_path;
     }
 
     const group = iterationGroups.get(homeCol) ?? [];
-    group.push(wi);
+    group.push(workItem);
     iterationGroups.set(homeCol, group);
   }
 
@@ -360,22 +367,22 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
     });
 
     let currentY = columnCurrentY.get(iterPath)!;
-    for (const wi of sortedItems) {
-      const doneChildCount = wi.children.filter((cid) => {
-        const child = workItemMap.get(cid);
-        return child && doneStates.has(child.state);
+    for (const workItem of sortedItems) {
+      const doneChildCount = workItem.children.filter((childId) => {
+        const childWorkItem = workItemMap.get(childId);
+        return childWorkItem && doneStates.has(childWorkItem.state);
       }).length;
 
-      if (multiSprintParentIds.has(wi.id)) {
+      if (multiSprintParentIds.has(workItem.id)) {
         // --- Multi-sprint parent (inline, spanning columns) ---
-        const descPaths = multiSprintPaths.get(wi.id)!;
+        const descPaths = multiSprintPaths.get(workItem.id)!;
         const spannedXs = [...descPaths]
           .map((p) => columnX.get(p))
           .filter((x): x is number => !isNil(x));
         const minSpanX = Math.min(colX, ...spannedXs);
         const maxSpanX = Math.max(colX, ...spannedXs) + MIN_COLUMN_WIDTH;
         const spanWidth = maxSpanX - minSpanX + GROUP_PADDING * 2;
-        const isExpanded = expandedParents.has(wi.id);
+        const isExpanded = expandedParents.has(workItem.id);
 
         const multiSprintExtent: [[number, number], [number, number]] = [
           [minSpanX, TOP_OFFSET],
@@ -384,9 +391,9 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
 
         if (isExpanded) {
           // Expanded: spanning container with children in column slots
-          const directChildren = wi.children
-            .map((cid) => workItemMap.get(cid))
-            .filter((c): c is WorkItem => c !== undefined);
+          const directChildren = workItem.children
+            .map((childId) => workItemMap.get(childId))
+            .filter((childWorkItem): childWorkItem is WorkItem => childWorkItem !== undefined);
 
           // Group children by column
           const childrenByIter = new Map<string, WorkItem[]>();
@@ -414,19 +421,19 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
           }
 
           const groupHeight = HEADER_HEIGHT + GROUP_PADDING * 2 + maxSlotHeight;
-          const groupId = `group-${wi.id}`;
-          nodeIdMap.set(wi.id, groupId);
+          const groupId = `group-${workItem.id}`;
+          nodeIdMap.set(workItem.id, groupId);
 
           nodes.push({
             id: groupId,
             type: "parentGroup",
             position: { x: minSpanX, y: currentY },
             data: {
-              label: wi.title,
-              workItemId: wi.id,
-              workItemType: wi.work_item_type,
-              state: wi.state,
-              childCount: wi.children.length,
+              label: workItem.title,
+              workItemId: workItem.id,
+              workItemType: workItem.work_item_type,
+              state: workItem.state,
+              childCount: workItem.children.length,
               doneChildCount,
               width: spanWidth,
               height: groupHeight,
@@ -469,9 +476,9 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
                 );
                 childY += dims.height + NODE_GAP_Y;
               } else {
-                const childDoneCount = child.children.filter((cid) => {
-                  const c = workItemMap.get(cid);
-                  return c && doneStates.has(c.state);
+                const childDoneCount = child.children.filter((childId) => {
+                  const childWorkItem = workItemMap.get(childId);
+                  return childWorkItem && doneStates.has(childWorkItem.state);
                 }).length;
                 const childNodeId = `wi-${child.id}`;
                 nodeIdMap.set(child.id, childNodeId);
@@ -502,8 +509,8 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
             columnCurrentY.set(p, Math.max(existingY, currentY));
           }
         } else {
-          const groupId = `group-${wi.id}`;
-          nodeIdMap.set(wi.id, groupId);
+          const groupId = `group-${workItem.id}`;
+          nodeIdMap.set(workItem.id, groupId);
           const collapsedHeight = NODE_HEIGHT;
 
           nodes.push({
@@ -511,11 +518,11 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
             type: "parentGroup",
             position: { x: minSpanX, y: currentY },
             data: {
-              label: wi.title,
-              workItemId: wi.id,
-              workItemType: wi.work_item_type,
-              state: wi.state,
-              childCount: wi.children.length,
+              label: workItem.title,
+              workItemId: workItem.id,
+              workItemType: workItem.work_item_type,
+              state: workItem.state,
+              childCount: workItem.children.length,
               doneChildCount,
               width: spanWidth,
               height: collapsedHeight,
@@ -535,8 +542,8 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
         }
       } else {
         // --- Regular work item ---
-        const isParent = wi.children.length > 0;
-        const isExpanded = expandedParents.has(wi.id);
+        const isParent = workItem.children.length > 0;
+        const isExpanded = expandedParents.has(workItem.id);
 
         if (isParent && isExpanded) {
           const colExtent: [[number, number], [number, number]] = [
@@ -544,7 +551,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
             [colX + MIN_COLUMN_WIDTH, 10000],
           ];
           const { width: gw, height: gh } = renderExpandedGroup(
-            wi,
+            workItem,
             colX,
             currentY,
             undefined,
@@ -559,8 +566,8 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
           void gw;
           currentY += gh + NODE_GAP_Y;
         } else {
-          const nodeId = `wi-${wi.id}`;
-          nodeIdMap.set(wi.id, nodeId);
+          const nodeId = `wi-${workItem.id}`;
+          nodeIdMap.set(workItem.id, nodeId);
           const extentBounds: CoordExtent = [
             [colX, TOP_OFFSET],
             [colX + MIN_COLUMN_WIDTH, 10000],
@@ -571,10 +578,10 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
             position: { x: colX, y: currentY },
             extent: extentBounds,
             data: {
-              workItem: wi,
+              workItem,
               isParent,
               isExpanded: false,
-              childCount: wi.children.length,
+              childCount: workItem.children.length,
               doneChildCount,
             },
             draggable: true,
@@ -617,13 +624,13 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   }
 
   // --- Build edges using rendered node IDs ---
-  for (const wi of work_items) {
-    for (const succId of wi.successors) {
+  for (const workItem of work_items) {
+    for (const succId of workItem.successors) {
       if (workItemMap.has(succId)) {
-        const sourceId = nodeIdMap.get(wi.id) ?? `wi-${wi.id}`;
+        const sourceId = nodeIdMap.get(workItem.id) ?? `wi-${workItem.id}`;
         const targetId = nodeIdMap.get(succId) ?? `wi-${succId}`;
         edges.push({
-          id: `edge-${wi.id}-${succId}`,
+          id: `edge-${workItem.id}-${succId}`,
           source: sourceId,
           target: targetId,
           type: "smoothstep",

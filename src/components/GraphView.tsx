@@ -35,7 +35,9 @@ export default function GraphView({ boardData }: GraphViewProps) {
       return;
     }
     const childIds = new Set(
-      boardData.work_items.filter((wi) => !isNil(wi.parent_id)).map((wi) => wi.parent_id!),
+      boardData.work_items
+        .filter((workItem) => !isNil(workItem.parent_id))
+        .map((workItem) => workItem.parent_id!),
     );
     // Only add new parents (don't reset user collapses)
     setExpandedParents((prev) => {
