@@ -1,6 +1,5 @@
 import type { Edge } from "@xyflow/react";
 import { MarkerType } from "@xyflow/react";
-import { isNil } from "lodash-es";
 import type { BoardData, WorkItem } from "../types";
 import type { WorkItemNodeData } from "../components/WorkItemNode";
 import type { SprintDividerData } from "../components/SprintDivider";
@@ -13,6 +12,8 @@ const SPRINT_PADDING = 40;
 const MIN_COLUMN_WIDTH = 1200;
 const TOP_OFFSET = 60;
 const COLUMN_STRIDE = MIN_COLUMN_WIDTH + NODE_GAP_X;
+const SUB_COLUMN_WIDTH = 280;
+const SUB_COLUMN_STRIDE = SUB_COLUMN_WIDTH + NODE_GAP_X;
 
 type AnyNodeData = WorkItemNodeData | SprintDividerData | ParentGroupData;
 
@@ -43,6 +44,74 @@ const Y_EXTENT_MAX = 10000;
 const MIN_DIVIDER_HEIGHT_ROWS = 3;
 
 type NodeIdMap = Map<number, string>;
+
+/**
+ * Compute dependency depth for a set of items using Kahn's algorithm.
+ * Returns a map of item ID → depth (0 = no predecessors in the set).
+ */
+function computeDependencyDepths(
+  items: WorkItem[],
+  workItemMap: Map<number, WorkItem>,
+): { depths: Map<number, number>; maxDepth: number } {
+  const itemIds = new Set(items.map((item) => item.id));
+
+  const localInDeg = new Map<number, number>();
+  for (const item of items) {
+    let deg = 0;
+    for (const predId of item.predecessors) {
+      if (itemIds.has(predId)) {
+        deg++;
+      }
+    }
+    localInDeg.set(item.id, deg);
+  }
+
+  const queue: number[] = [];
+  const depths = new Map<number, number>();
+  for (const [id, deg] of localInDeg) {
+    if (deg === 0) {
+      queue.push(id);
+      depths.set(id, 0);
+    }
+  }
+
+  let maxDepth = 0;
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    const item = workItemMap.get(id);
+    if (!item) {
+      continue;
+    }
+    const myDepth = depths.get(id) ?? 0;
+
+    for (const succId of item.successors) {
+      if (!itemIds.has(succId)) {
+        continue;
+      }
+      const newDepth = myDepth + 1;
+      const existingDepth = depths.get(succId) ?? 0;
+      if (newDepth > existingDepth) {
+        depths.set(succId, newDepth);
+      }
+      maxDepth = Math.max(maxDepth, newDepth);
+
+      const newDeg = (localInDeg.get(succId) ?? 1) - 1;
+      localInDeg.set(succId, newDeg);
+      if (newDeg === 0) {
+        queue.push(succId);
+      }
+    }
+  }
+
+  // Items not reached by Kahn's (e.g., cycles) get depth 0
+  for (const item of items) {
+    if (!depths.has(item.id)) {
+      depths.set(item.id, 0);
+    }
+  }
+
+  return { depths, maxDepth };
+}
 
 /**
  * Collect all descendant leaf iteration paths for a work item.
@@ -321,7 +390,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
     }
   }
 
-  // --- Phase 3: Group items by home column ---
+  // --- Phase 3: Group items by home sprint column ---
   // Multi-sprint parents go into their earliest descendant's column
   const iterationGroups = new Map<string, WorkItem[]>();
 
@@ -352,16 +421,168 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
     iterationGroups.set(homeCol, group);
   }
 
-  // --- Phase 4: Layout items per column (multi-sprint parents inline) ---
-  // Shared Y tracker across columns — multi-sprint parents advance ALL spanned columns
-  const columnCurrentY = new Map<string, number>();
-  for (const p of iterationPaths) {
-    columnCurrentY.set(p, TOP_OFFSET);
-  }
+  // --- Phase 3b: Compute effective columns based on dependencies ---
+  // Within each sprint, items with same-sprint predecessors get pushed to sub-columns
+  const sprintColIndex = new Map<string, number>();
+  iterationPaths.forEach((path, i) => {
+    sprintColIndex.set(path, i);
+  });
+
+  const withinSprintDepth = new Map<number, number>();
+  const sprintWidths = new Map<string, number>();
 
   for (const iterPath of iterationPaths) {
-    const colX = columnX.get(iterPath)!;
     const items = iterationGroups.get(iterPath) ?? [];
+    if (items.length === 0) {
+      sprintWidths.set(iterPath, 1);
+      continue;
+    }
+
+    const { depths, maxDepth } = computeDependencyDepths(items, workItemMap);
+    for (const [id, depth] of depths) {
+      withinSprintDepth.set(id, depth);
+    }
+
+    sprintWidths.set(iterPath, maxDepth + 1);
+  }
+
+  // Also consider children of multi-sprint parents for sprint width computation
+  // Pre-compute per-sprint child dependency depths and store for reuse in Phase 4
+  const multiSprintChildDepths = new Map<number, number>();
+  for (const parentId of multiSprintParentIds) {
+    const parent = workItemMap.get(parentId);
+    if (!parent) {
+      continue;
+    }
+    const directChildren = parent.children
+      .map((childId) => workItemMap.get(childId))
+      .filter((child): child is WorkItem => child !== undefined);
+
+    // Group children by their placement sprint
+    const childrenBySprint = new Map<string, WorkItem[]>();
+    for (const child of directChildren) {
+      let placementPath = child.iteration_path;
+      if (child.children.length > 0) {
+        const childDescPaths = collectDescendantIterPaths(child, workItemMap);
+        placementPath = findEarliestPath(childDescPaths, iterationByPath);
+      }
+      const group = childrenBySprint.get(placementPath) ?? [];
+      group.push(child);
+      childrenBySprint.set(placementPath, group);
+    }
+
+    // Compute per-sprint dependency depths and widen sprint if needed
+    for (const [sprintPath, sprintChildren] of childrenBySprint) {
+      const { depths, maxDepth } = computeDependencyDepths(sprintChildren, workItemMap);
+      for (const [id, depth] of depths) {
+        multiSprintChildDepths.set(id, depth);
+      }
+      const currentWidth = sprintWidths.get(sprintPath) ?? 1;
+      if (maxDepth + 1 > currentWidth) {
+        sprintWidths.set(sprintPath, maxDepth + 1);
+      }
+    }
+  }
+
+  // Compute sprint starting effective columns (non-overlapping)
+  const sprintStartCol = new Map<string, number>();
+  let effColStart = 0;
+  for (const path of iterationPaths) {
+    sprintStartCol.set(path, effColStart);
+    effColStart += sprintWidths.get(path) ?? 1;
+  }
+
+  // Compute each item's effective column
+  const itemEffCol = new Map<number, number>();
+  for (const [iterPath, items] of iterationGroups) {
+    const base = sprintStartCol.get(iterPath) ?? 0;
+    for (const item of items) {
+      const depth = withinSprintDepth.get(item.id) ?? 0;
+      itemEffCol.set(item.id, base + depth);
+    }
+  }
+
+  // Cross-sprint forward pass: ensure successors are to the right of predecessors
+  const allColumnItemIds = new Set(itemEffCol.keys());
+  let crossShifted = true;
+  while (crossShifted) {
+    crossShifted = false;
+    for (const id of allColumnItemIds) {
+      const item = workItemMap.get(id)!;
+      const myCol = itemEffCol.get(id)!;
+      for (const succId of item.successors) {
+        const succCol = itemEffCol.get(succId);
+        if (succCol !== undefined && succCol <= myCol) {
+          itemEffCol.set(succId, myCol + 1);
+          crossShifted = true;
+        }
+      }
+    }
+  }
+
+  // Determine max effective column
+  let maxEffCol = effColStart - 1;
+  for (const col of itemEffCol.values()) {
+    maxEffCol = Math.max(maxEffCol, col);
+  }
+
+  // Build effective column X positions
+  // Each sprint's first sub-column gets COLUMN_STRIDE spacing from other sprints
+  // Additional sub-columns within a sprint use the smaller SUB_COLUMN_STRIDE
+  const effColumnX = new Map<number, number>();
+  for (const path of iterationPaths) {
+    const startCol = sprintStartCol.get(path) ?? 0;
+    const width = sprintWidths.get(path) ?? 1;
+    const sprintBaseX = SPRINT_PADDING + sprintStartCol.get(path)! * COLUMN_STRIDE;
+
+    // Adjust: only the first sub-column per sprint uses full COLUMN_STRIDE from previous sprint
+    // Subsequent sub-columns within the sprint use SUB_COLUMN_STRIDE offsets
+    // Recompute: sprint base X accounts for prior sprints' sub-column widths
+    for (let sub = 0; sub < width; sub++) {
+      effColumnX.set(startCol + sub, sprintBaseX + sub * SUB_COLUMN_STRIDE);
+    }
+  }
+
+  // Recalculate sprint base X properly: each sprint starts after the previous sprint's full width
+  effColumnX.clear();
+  let sprintBaseX = SPRINT_PADDING;
+  for (const path of iterationPaths) {
+    const startCol = sprintStartCol.get(path) ?? 0;
+    const width = sprintWidths.get(path) ?? 1;
+    for (let sub = 0; sub < width; sub++) {
+      effColumnX.set(startCol + sub, sprintBaseX + sub * SUB_COLUMN_STRIDE);
+    }
+    // Next sprint starts after this sprint's columns
+    // First sub-col = MIN_COLUMN_WIDTH, additional sub-cols = SUB_COLUMN_STRIDE each
+    sprintBaseX +=
+      MIN_COLUMN_WIDTH + (width > 1 ? (width - 1) * SUB_COLUMN_STRIDE : 0) + NODE_GAP_X;
+  }
+
+  // Build groups by effective column
+  const effColumnGroups = new Map<number, WorkItem[]>();
+  for (const [id, col] of itemEffCol) {
+    const item = workItemMap.get(id)!;
+    const group = effColumnGroups.get(col) ?? [];
+    group.push(item);
+    effColumnGroups.set(col, group);
+  }
+
+  // Update columnX to map sprint paths → effective X positions (for multi-sprint parent rendering)
+  columnX.clear();
+  for (const path of iterationPaths) {
+    const startCol = sprintStartCol.get(path)!;
+    columnX.set(path, effColumnX.get(startCol)!);
+  }
+
+  // --- Phase 4: Layout items per effective column ---
+  const columnCurrentY = new Map<number, number>();
+  for (let i = 0; i <= maxEffCol; i++) {
+    columnCurrentY.set(i, TOP_OFFSET);
+  }
+
+  for (let effCol = 0; effCol <= maxEffCol; effCol++) {
+    const colX = effColumnX.get(effCol)!;
+    const items = effColumnGroups.get(effCol) ?? [];
 
     const sortedItems = [...items].sort((a, b) => {
       const aDone = doneStates.has(a.state) ? 1 : 0;
@@ -369,7 +590,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
       return aDone - bDone;
     });
 
-    let currentY = columnCurrentY.get(iterPath)!;
+    let currentY = columnCurrentY.get(effCol)!;
     for (const workItem of sortedItems) {
       const doneChildCount = workItem.children.filter((childId) => {
         const childWorkItem = workItemMap.get(childId);
@@ -379,11 +600,18 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
       if (multiSprintParentIds.has(workItem.id)) {
         // --- Multi-sprint parent (inline, spanning columns) ---
         const descPaths = multiSprintPaths.get(workItem.id)!;
-        const spannedXs = [...descPaths]
-          .map((p) => columnX.get(p))
-          .filter((x): x is number => !isNil(x));
-        const minSpanX = Math.min(colX, ...spannedXs);
-        const maxSpanX = Math.max(colX, ...spannedXs) + MIN_COLUMN_WIDTH;
+        // Compute the full X extent of spanned sprints, accounting for sub-columns
+        const spannedRanges = [...descPaths]
+          .map((p) => {
+            const x = columnX.get(p);
+            const w = sprintWidths.get(p) ?? 1;
+            return x !== undefined
+              ? { start: x, end: x + MIN_COLUMN_WIDTH + (w > 1 ? (w - 1) * SUB_COLUMN_STRIDE : 0) }
+              : null;
+          })
+          .filter((r): r is { start: number; end: number } => r !== null);
+        const minSpanX = Math.min(colX, ...spannedRanges.map((r) => r.start));
+        const maxSpanX = Math.max(colX + MIN_COLUMN_WIDTH, ...spannedRanges.map((r) => r.end));
         const spanWidth = maxSpanX - minSpanX + GROUP_PADDING * 2;
         const isExpanded = expandedParents.has(workItem.id);
 
@@ -398,22 +626,32 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
             .map((childId) => workItemMap.get(childId))
             .filter((childWorkItem): childWorkItem is WorkItem => childWorkItem !== undefined);
 
-          // Group children by column
-          const childrenByIter = new Map<string, WorkItem[]>();
+          // Determine each child's placement sprint
+          const childPathMap = new Map<number, string>();
           for (const child of directChildren) {
             let placementPath = child.iteration_path;
             if (child.children.length > 0) {
               const childDescPaths = collectDescendantIterPaths(child, workItemMap);
               placementPath = findEarliestPath(childDescPaths, iterationByPath);
             }
-            const group = childrenByIter.get(placementPath) ?? [];
-            group.push(child);
-            childrenByIter.set(placementPath, group);
+            childPathMap.set(child.id, placementPath);
           }
 
-          // Measure max slot height
+          // Group children by effective sub-column key (path + depth)
+          // Depths were pre-computed in Phase 3b and stored in multiSprintChildDepths
+          const childrenBySubCol = new Map<string, WorkItem[]>();
+          for (const child of directChildren) {
+            const path = childPathMap.get(child.id) ?? child.iteration_path;
+            const depth = multiSprintChildDepths.get(child.id) ?? 0;
+            const key = `${path}:${depth}`;
+            const group = childrenBySubCol.get(key) ?? [];
+            group.push(child);
+            childrenBySubCol.set(key, group);
+          }
+
+          // Measure max sub-column height
           let maxSlotHeight = 0;
-          for (const [, children] of childrenByIter) {
+          for (const [, children] of childrenBySubCol) {
             let h = 0;
             for (const child of children) {
               const m = measureChildHeight(child, workItemMap, expandedParents, doneStates);
@@ -447,17 +685,18 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
             style: { width: spanWidth, height: groupHeight },
           });
 
-          // Render children in their column slots
-          for (const [childIterPath, children] of childrenByIter) {
-            const childColX = columnX.get(childIterPath);
-            if (isNil(childColX)) {
-              continue;
-            }
-            const slotX = childColX - minSpanX + GROUP_PADDING;
-            // Extent relative to parent group — constrain to this column slot
+          // Render children in their dependency-aware sub-column slots
+          // Child X positions align with external sprint divider columns
+          for (const [subColKey, children] of childrenBySubCol) {
+            const [childIterPath, depthStr] = subColKey.split(":");
+            const depth = Number(depthStr);
+            const externalX = columnX.get(childIterPath);
+            const baseSlotX =
+              externalX !== undefined ? externalX - minSpanX + GROUP_PADDING : GROUP_PADDING;
+            const slotX = baseSlotX + depth * SUB_COLUMN_STRIDE;
             const slotExtent: [[number, number], [number, number]] = [
               [slotX, HEADER_HEIGHT],
-              [slotX + MIN_COLUMN_WIDTH - GROUP_PADDING * 2, groupHeight],
+              [slotX + SUB_COLUMN_WIDTH - GROUP_PADDING * 2, groupHeight],
             ];
             let childY = HEADER_HEIGHT + GROUP_PADDING;
 
@@ -506,10 +745,14 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
           }
 
           currentY += groupHeight + NODE_GAP_Y;
-          // Push all spanned columns' Y below this expanded container
+          // Push all spanned effective columns' Y below this expanded container
           for (const p of descPaths) {
-            const existingY = columnCurrentY.get(p) ?? TOP_OFFSET;
-            columnCurrentY.set(p, Math.max(existingY, currentY));
+            const startC = sprintStartCol.get(p) ?? 0;
+            const width = sprintWidths.get(p) ?? 1;
+            for (let c = startC; c < startC + width; c++) {
+              const existingY = columnCurrentY.get(c) ?? TOP_OFFSET;
+              columnCurrentY.set(c, Math.max(existingY, currentY));
+            }
           }
         } else {
           const groupId = `group-${workItem.id}`;
@@ -537,10 +780,14 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
           });
 
           currentY += collapsedHeight + NODE_GAP_Y;
-          // Push all spanned columns' Y below this collapsed bar
+          // Push all spanned effective columns' Y below this collapsed bar
           for (const p of descPaths) {
-            const existingY = columnCurrentY.get(p) ?? TOP_OFFSET;
-            columnCurrentY.set(p, Math.max(existingY, currentY));
+            const startC = sprintStartCol.get(p) ?? 0;
+            const width = sprintWidths.get(p) ?? 1;
+            for (let c = startC; c < startC + width; c++) {
+              const existingY = columnCurrentY.get(c) ?? TOP_OFFSET;
+              columnCurrentY.set(c, Math.max(existingY, currentY));
+            }
           }
         }
       } else {
@@ -594,7 +841,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
       }
     }
 
-    columnCurrentY.set(iterPath, currentY);
+    columnCurrentY.set(effCol, currentY);
   }
 
   // --- Phase 5: Sprint dividers (heights based on tallest column) ---
@@ -604,7 +851,11 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   }
 
   for (const iterPath of iterationPaths) {
-    const colStartX = columnX.get(iterPath)!;
+    const startCol = sprintStartCol.get(iterPath)!;
+    const width = sprintWidths.get(iterPath) ?? 1;
+    const colStartX = effColumnX.get(startCol)!;
+    const dividerWidth =
+      MIN_COLUMN_WIDTH + (width > 1 ? (width - 1) * SUB_COLUMN_STRIDE : 0) + SPRINT_PADDING;
     const iterName = iterPath.split("\\").pop() ?? iterPath;
     const iterInfo = iterationByPath.get(iterPath);
     const isCurrent = iterPath === currentIterPath;
@@ -618,7 +869,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
         startDate: iterInfo?.start_date ?? null,
         finishDate: iterInfo?.finish_date ?? null,
         height: overallMaxY + SPRINT_PADDING,
-        width: MIN_COLUMN_WIDTH + SPRINT_PADDING,
+        width: dividerWidth,
         isCurrent,
       },
       draggable: false,
