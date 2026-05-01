@@ -27,7 +27,7 @@ const nodeTypes: NodeTypes = {
 
 export default function GraphView({ boardData }: GraphViewProps) {
   const [expandedParents, setExpandedParents] = useState<Set<number>>(
-    new Set()
+    () => new Set()
   );
 
   // Expand all parents by default when board data loads
@@ -35,7 +35,7 @@ export default function GraphView({ boardData }: GraphViewProps) {
     if (!boardData) return;
     const childIds = new Set(
       boardData.work_items
-        .filter((wi) => wi.parent_id != null)
+        .filter((wi) => wi.parent_id !== null && wi.parent_id !== undefined)
         .map((wi) => wi.parent_id!)
     );
     // Only add new parents (don't reset user collapses)
@@ -85,8 +85,8 @@ export default function GraphView({ boardData }: GraphViewProps) {
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);
 
   // Re-sync when layout changes
-  useMemo(() => {
-    setNodes(layoutNodes as any);
+  useEffect(() => {
+    setNodes(() => layoutNodes);
     setEdges(layoutEdges);
   }, [layoutNodes, layoutEdges, setNodes, setEdges]);
 

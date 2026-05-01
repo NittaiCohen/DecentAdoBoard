@@ -23,8 +23,18 @@ interface SavedConfig {
 function loadSavedConfig(): SavedConfig {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) return JSON.parse(saved);
-  } catch {}
+    if (saved) {
+      const config: unknown = JSON.parse(saved);
+      if (
+        typeof config === "object" && config !== null &&
+        "organization" in config && typeof config.organization === "string" &&
+        "project" in config && typeof config.project === "string" &&
+        "areaPath" in config && typeof config.areaPath === "string"
+      ) {
+        return { organization: config.organization, project: config.project, areaPath: config.areaPath };
+      }
+    }
+  } catch { /* ignore invalid JSON */ }
   return { organization: "", project: "", areaPath: "" };
 }
 
@@ -36,9 +46,10 @@ export default function ProjectSelector({
   onConfigured,
   onBack,
 }: ProjectSelectorProps) {
-  const saved = loadSavedConfig();
-  const patOrg = localStorage.getItem("ado_organization") || "";
-  const [organization, setOrganization] = useState(saved.organization || patOrg);
+  const [saved] = useState(loadSavedConfig);
+  const [organization, setOrganization] = useState(
+    () => saved.organization || localStorage.getItem("ado_organization") || ""
+  );
   const [project, setProject] = useState(saved.project);
   const [areaPath, setAreaPath] = useState(saved.areaPath);
   const [error, setError] = useState("");
@@ -57,9 +68,8 @@ export default function ProjectSelector({
     setOrgLoading(true);
     listOrganizationsTauri()
       .then((accts) => setOrgOptions(accts.map((a) => a.accountName).filter(Boolean)))
-      .catch((err) => {
-        console.error("Failed to load organizations:", err);
-        setError(`Org loading: ${err}`);
+      .catch((err: unknown) => {
+        setError(`Org loading: ${String(err)}`);
       })
       .finally(() => setOrgLoading(false));
   }, []);
@@ -113,7 +123,7 @@ export default function ProjectSelector({
   return (
     <div className="flex items-center justify-center h-screen w-screen bg-gray-900">
       <form
-        onSubmit={handleSubmit}
+        onSubmit={(e) => void handleSubmit(e)}
         className="bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-xl"
       >
         <h1 className="text-xl font-bold text-gray-100 mb-2">

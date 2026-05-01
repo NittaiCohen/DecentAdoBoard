@@ -35,7 +35,8 @@ export default function ComboBox({
   const handleClickOutside = useCallback((e: MouseEvent) => {
     if (
       containerRef.current &&
-      !containerRef.current.contains(e.target as Node)
+      e.target instanceof Node &&
+      !containerRef.current.contains(e.target)
     ) {
       setOpen(false);
       setFilter("");

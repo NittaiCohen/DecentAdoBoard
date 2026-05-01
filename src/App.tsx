@@ -4,52 +4,10 @@ import ActionableSidebar from "./components/ActionableSidebar";
 import PatLogin from "./components/Settings";
 import ProjectSelector from "./components/ProjectSelector";
 import { useBoardData, setPatTauri, setConfigTauri } from "./hooks/useAdoData";
+import { getSavedPat, getSavedConfig, clearPat } from "./utils/storage";
 import "./App.css";
 
 type AppStep = "pat" | "project" | "board";
-
-const PAT_STORAGE_KEY = "ado_pat";
-const PAT_EXPIRY_KEY = "ado_pat_expiry";
-const CONFIG_STORAGE_KEY = "ado-config";
-
-function getSavedPat(): string | null {
-  const pat = localStorage.getItem(PAT_STORAGE_KEY);
-  const expiry = localStorage.getItem(PAT_EXPIRY_KEY);
-  if (!pat) return null;
-  if (expiry) {
-    const expiryDate = new Date(expiry);
-    if (expiryDate <= new Date()) {
-      localStorage.removeItem(PAT_STORAGE_KEY);
-      localStorage.removeItem(PAT_EXPIRY_KEY);
-      return null;
-    }
-  }
-  return pat;
-}
-
-function getSavedConfig(): { organization: string; project: string; areaPath: string } | null {
-  try {
-    const saved = localStorage.getItem(CONFIG_STORAGE_KEY);
-    if (!saved) return null;
-    const config = JSON.parse(saved);
-    if (config.organization && config.project && config.areaPath) return config;
-  } catch {}
-  return null;
-}
-
-export function savePat(pat: string, validTo?: string) {
-  localStorage.setItem(PAT_STORAGE_KEY, pat);
-  if (validTo) {
-    localStorage.setItem(PAT_EXPIRY_KEY, validTo);
-  } else {
-    localStorage.removeItem(PAT_EXPIRY_KEY);
-  }
-}
-
-export function clearPat() {
-  localStorage.removeItem(PAT_STORAGE_KEY);
-  localStorage.removeItem(PAT_EXPIRY_KEY);
-}
 
 function App() {
   const [step, setStep] = useState<AppStep>("pat");
@@ -86,7 +44,7 @@ function App() {
       }
       setRestoring(false);
     }
-    restore();
+    void restore();
   }, []);
 
   const { data: boardData, isLoading, error } = useBoardData(step === "board");

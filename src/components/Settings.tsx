@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { setPatTauri, generatePatTauri } from "../hooks/useAdoData";
-import { savePat } from "../App";
+import { savePat } from "../utils/storage";
 import ComboBox from "./ComboBox";
 
 interface PatLoginProps {
@@ -65,7 +65,7 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
   return (
     <div className="flex items-center justify-center h-screen w-screen bg-gray-900">
       <form
-        onSubmit={handleSubmit}
+        onSubmit={(e) => void handleSubmit(e)}
         className="bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-xl"
       >
         <h1 className="text-xl font-bold text-gray-100 mb-2">
@@ -108,7 +108,7 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
               />
               <button
                 type="button"
-                onClick={() => handleGenerate(selectedOrg)}
+                onClick={() => void handleGenerate(selectedOrg)}
                 disabled={generating || !selectedOrg}
                 className="w-full bg-green-700 hover:bg-green-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-medium py-2 px-3 rounded transition-colors"
               >
@@ -118,7 +118,7 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
           ) : (
             <button
               type="button"
-              onClick={() => handleGenerate()}
+              onClick={() => void handleGenerate()}
               disabled={generating}
               className="w-full bg-green-700 hover:bg-green-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-medium py-2 px-3 rounded transition-colors"
             >

@@ -15,13 +15,15 @@ const COLUMN_STRIDE = MIN_COLUMN_WIDTH + NODE_GAP_X;
 
 type AnyNodeData = WorkItemNodeData | SprintDividerData | ParentGroupData;
 
+type CoordExtent = [[number, number], [number, number]];
+
 interface LayoutNode {
   id: string;
   type: string;
   position: { x: number; y: number };
   data: AnyNodeData;
   parentId?: string;
-  extent?: "parent" | [[number, number], [number, number]];
+  extent?: "parent" | CoordExtent;
   draggable?: boolean;
   style?: Record<string, unknown>;
 }
@@ -353,7 +355,7 @@ export function buildGraphLayout(
         const descPaths = multiSprintPaths.get(wi.id)!;
         const spannedXs = [...descPaths]
           .map((p) => columnX.get(p))
-          .filter((x): x is number => x != null);
+          .filter((x): x is number => x !== null && x !== undefined);
         const minSpanX = Math.min(colX, ...spannedXs);
         const maxSpanX = Math.max(colX, ...spannedXs) + MIN_COLUMN_WIDTH;
         const spanWidth = maxSpanX - minSpanX + GROUP_PADDING * 2;
@@ -419,7 +421,7 @@ export function buildGraphLayout(
           // Render children in their column slots
           for (const [childIterPath, children] of childrenByIter) {
             const childColX = columnX.get(childIterPath);
-            if (childColX == null) continue;
+            if (childColX === null || childColX === undefined) continue;
             const slotX = childColX - minSpanX + GROUP_PADDING;
             // Extent relative to parent group — constrain to this column slot
             const slotExtent: [[number, number], [number, number]] = [
@@ -521,11 +523,12 @@ export function buildGraphLayout(
         } else {
           const nodeId = `wi-${wi.id}`;
           nodeIdMap.set(wi.id, nodeId);
+          const extentBounds: CoordExtent = [[colX, TOP_OFFSET], [colX + MIN_COLUMN_WIDTH, 10000]];
           nodes.push({
             id: nodeId,
             type: "workItem",
             position: { x: colX, y: currentY },
-            extent: [[colX, TOP_OFFSET], [colX + MIN_COLUMN_WIDTH, 10000]] as [[number, number], [number, number]],
+            extent: extentBounds,
             data: {
               workItem: wi,
               isParent,
