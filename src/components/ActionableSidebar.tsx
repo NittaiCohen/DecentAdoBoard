@@ -1,4 +1,10 @@
 import type { BoardData, WorkItem } from "../types";
+import {
+  TYPE_COLORS,
+  DEFAULT_TYPE_COLOR,
+  STATE_BADGES,
+  DEFAULT_STATE_BADGE,
+} from "../utils/workItemColors";
 
 interface ActionableSidebarProps {
   isOpen: boolean;
@@ -6,31 +12,209 @@ interface ActionableSidebarProps {
   boardData?: BoardData;
 }
 
-function getActionableItems(boardData?: BoardData): WorkItem[] {
+interface ActionableNode {
+  workItem: WorkItem;
+  children: ActionableNode[];
+}
+
+const DONE_STATES = new Set(["Done", "Closed", "Resolved", "Removed"]);
+
+const STATE_SORT_PRIORITY: Record<string, number> = {
+  "In Review": 0,
+  Active: 1,
+  "In Progress": 1,
+  New: 2,
+  "To Do": 2,
+};
+
+const DEFAULT_STATE_PRIORITY = 2;
+
+function statePriority(state: string): number {
+  return STATE_SORT_PRIORITY[state] ?? DEFAULT_STATE_PRIORITY;
+}
+
+function sortNodes(nodes: ActionableNode[]): void {
+  nodes.sort((a, b) => statePriority(a.workItem.state) - statePriority(b.workItem.state));
+  for (const node of nodes) {
+    sortNodes(node.children);
+  }
+}
+
+function countLeafItems(nodes: ActionableNode[]): number {
+  let count = 0;
+  for (const node of nodes) {
+    if (node.children.length === 0) {
+      count += 1;
+    } else {
+      count += countLeafItems(node.children);
+    }
+  }
+  return count;
+}
+
+function buildActionableTree(boardData?: BoardData): ActionableNode[] {
   if (!boardData) {
     return [];
   }
 
   const stateMap = new Map(boardData.work_items.map((workItem) => [workItem.id, workItem.state]));
+  const workItemMap = new Map(boardData.work_items.map((workItem) => [workItem.id, workItem]));
 
-  const doneStates = new Set(["Done", "Closed", "Resolved", "Removed"]);
+  // A work item is actionable if:
+  // 1. It's not done
+  // 2. All its own predecessors are done
+  // 3. Its parent (if any) is also actionable
+  const actionableCache = new Map<number, boolean>();
 
-  return boardData.work_items.filter((workItem) => {
-    if (doneStates.has(workItem.state)) {
+  const isActionable = (id: number): boolean => {
+    const cached = actionableCache.get(id);
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const workItem = workItemMap.get(id);
+    if (!workItem) {
+      actionableCache.set(id, false);
       return false;
     }
-    if (workItem.predecessors.length === 0) {
-      return true;
+
+    if (DONE_STATES.has(workItem.state)) {
+      actionableCache.set(id, false);
+      return false;
     }
-    return workItem.predecessors.every((predId) => {
+
+    const predsComplete = workItem.predecessors.every((predId) => {
       const predState = stateMap.get(predId);
-      return predState && doneStates.has(predState);
+      return predState && DONE_STATES.has(predState);
     });
-  });
+
+    if (!predsComplete) {
+      actionableCache.set(id, false);
+      return false;
+    }
+
+    if (workItem.parent_id) {
+      const parentActionable = isActionable(workItem.parent_id);
+      if (!parentActionable) {
+        actionableCache.set(id, false);
+        return false;
+      }
+    }
+
+    actionableCache.set(id, true);
+    return true;
+  };
+
+  const actionableSet = new Set(
+    boardData.work_items
+      .filter((workItem) => isActionable(workItem.id))
+      .map((workItem) => workItem.id),
+  );
+
+  // Group actionable items by parent
+  const childrenByParent = new Map<number, WorkItem[]>();
+  for (const workItem of boardData.work_items) {
+    if (workItem.parent_id && actionableSet.has(workItem.id)) {
+      const existing = childrenByParent.get(workItem.parent_id) ?? [];
+      existing.push(workItem);
+      childrenByParent.set(workItem.parent_id, existing);
+    }
+  }
+
+  // Recursively build tree nodes
+  const buildNode = (workItem: WorkItem): ActionableNode => {
+    const childWorkItems = childrenByParent.get(workItem.id) ?? [];
+    return {
+      workItem,
+      children: childWorkItems.map(buildNode),
+    };
+  };
+
+  // Top-level: actionable items that have no parent, or whose parent is not in the tree
+  const topLevel: ActionableNode[] = [];
+  const hasParentInTree = new Set<number>();
+  for (const [, children] of childrenByParent) {
+    for (const child of children) {
+      hasParentInTree.add(child.id);
+    }
+  }
+
+  for (const id of actionableSet) {
+    if (hasParentInTree.has(id)) {
+      continue;
+    }
+    const workItem = workItemMap.get(id);
+    if (!workItem) {
+      continue;
+    }
+    topLevel.push(buildNode(workItem));
+  }
+
+  // Also add groups for non-actionable parents that have actionable children
+  for (const [parentId, children] of childrenByParent) {
+    if (actionableSet.has(parentId)) {
+      continue;
+    }
+    const parent = workItemMap.get(parentId);
+    if (!parent) {
+      continue;
+    }
+    topLevel.push({
+      workItem: parent,
+      children: children.map(buildNode),
+    });
+  }
+
+  sortNodes(topLevel);
+  return topLevel;
+}
+
+function ActionableNodeCard({ node, depth }: { node: ActionableNode; depth: number }) {
+  const colorClass = TYPE_COLORS[node.workItem.work_item_type] ?? DEFAULT_TYPE_COLOR;
+  const stateClass = STATE_BADGES[node.workItem.state] ?? DEFAULT_STATE_BADGE;
+  const compact = depth > 0;
+  const padding = compact ? "px-2 py-1.5" : "p-3";
+
+  return (
+    <div className={`rounded border-l-4 ${padding} ${colorClass}`}>
+      <div className="flex items-center gap-1.5 mb-1">
+        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+          {`#${node.workItem.id}`}
+        </span>
+        <span className={`text-[10px] px-1 py-0.5 rounded ${stateClass}`}>
+          {node.workItem.state}
+        </span>
+        {node.children.length > 0 && (
+          <span className="text-[10px] text-gray-500 dark:text-gray-400 ml-auto">
+            {`${node.children.length} actionable`}
+          </span>
+        )}
+      </div>
+      <p
+        className={`text-gray-900 dark:text-gray-100 leading-tight line-clamp-2 ${compact ? "text-xs" : "text-sm"}`}
+        title={node.workItem.title}
+      >
+        {node.workItem.title}
+      </p>
+      {node.workItem.assigned_to && (
+        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 truncate">
+          {node.workItem.assigned_to}
+        </p>
+      )}
+      {node.children.length > 0 && (
+        <div className="space-y-1.5 mt-2 ml-1">
+          {node.children.map((child) => (
+            <ActionableNodeCard key={child.workItem.id} node={child} depth={depth + 1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function ActionableSidebar({ isOpen, onToggle, boardData }: ActionableSidebarProps) {
-  const actionableItems = getActionableItems(boardData);
+  const tree = buildActionableTree(boardData);
+  const totalCount = countLeafItems(tree);
 
   return (
     <div
@@ -49,34 +233,16 @@ export default function ActionableSidebar({ isOpen, onToggle, boardData }: Actio
       {isOpen && (
         <div className="p-4 overflow-y-auto h-[calc(100%-2.5rem)]">
           <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300 uppercase tracking-wide mb-3">
-            {`Ready to Work (${actionableItems.length})`}
+            {`Ready to Work (${totalCount})`}
           </h2>
-          {actionableItems.length === 0 ? (
+          {tree.length === 0 ? (
             <p className="text-sm text-gray-400 dark:text-gray-500">
               {"No actionable work items found."}
             </p>
           ) : (
             <div className="space-y-2">
-              {actionableItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="bg-gray-100 dark:bg-gray-700 rounded p-3 border border-gray-300 dark:border-gray-600"
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-mono text-gray-500 dark:text-gray-400">{`#${item.id}`}</span>
-                    <span className="text-xs px-1.5 py-0.5 rounded bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-300">
-                      {item.work_item_type}
-                    </span>
-                  </div>
-                  <p className="text-sm text-gray-900 dark:text-gray-100 leading-tight">
-                    {item.title}
-                  </p>
-                  {item.assigned_to && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      {item.assigned_to}
-                    </p>
-                  )}
-                </div>
+              {tree.map((node) => (
+                <ActionableNodeCard key={node.workItem.id} node={node} depth={0} />
               ))}
             </div>
           )}
