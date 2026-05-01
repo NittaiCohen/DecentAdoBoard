@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { isNil } from "lodash-es";
 import {
   ReactFlow,
   Background,
@@ -35,7 +36,7 @@ export default function GraphView({ boardData }: GraphViewProps) {
     if (!boardData) return;
     const childIds = new Set(
       boardData.work_items
-        .filter((wi) => wi.parent_id !== null && wi.parent_id !== undefined)
+        .filter((wi) => !isNil(wi.parent_id))
         .map((wi) => wi.parent_id!)
     );
     // Only add new parents (don't reset user collapses)

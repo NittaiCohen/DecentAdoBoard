@@ -23,9 +23,11 @@ interface SavedConfig {
   areaPath: string;
 }
 
+import { isObject } from "lodash-es";
+
 function isSavedConfig(value: unknown): value is SavedConfig {
   return (
-    typeof value === "object" && value !== null &&
+    isObject(value) &&
     "organization" in value && typeof value.organization === "string" && value.organization !== "" &&
     "project" in value && typeof value.project === "string" && value.project !== "" &&
     "areaPath" in value && typeof value.areaPath === "string" && value.areaPath !== ""

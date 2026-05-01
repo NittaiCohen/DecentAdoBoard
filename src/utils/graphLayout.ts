@@ -1,5 +1,6 @@
 import type { Edge } from "@xyflow/react";
 import { MarkerType } from "@xyflow/react";
+import { isNil } from "lodash-es";
 import type { BoardData, WorkItem } from "../types";
 import type { WorkItemNodeData } from "../components/WorkItemNode";
 import type { SprintDividerData } from "../components/SprintDivider";
@@ -355,7 +356,7 @@ export function buildGraphLayout(
         const descPaths = multiSprintPaths.get(wi.id)!;
         const spannedXs = [...descPaths]
           .map((p) => columnX.get(p))
-          .filter((x): x is number => x !== null && x !== undefined);
+          .filter((x): x is number => !isNil(x));
         const minSpanX = Math.min(colX, ...spannedXs);
         const maxSpanX = Math.max(colX, ...spannedXs) + MIN_COLUMN_WIDTH;
         const spanWidth = maxSpanX - minSpanX + GROUP_PADDING * 2;
@@ -421,7 +422,7 @@ export function buildGraphLayout(
           // Render children in their column slots
           for (const [childIterPath, children] of childrenByIter) {
             const childColX = columnX.get(childIterPath);
-            if (childColX === null || childColX === undefined) continue;
+            if (isNil(childColX)) continue;
             const slotX = childColX - minSpanX + GROUP_PADDING;
             // Extent relative to parent group — constrain to this column slot
             const slotExtent: [[number, number], [number, number]] = [

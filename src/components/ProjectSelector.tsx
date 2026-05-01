@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { isObject } from "lodash-es";
 import {
   setConfigTauri,
   listOrganizationsTauri,
@@ -26,7 +27,7 @@ function loadSavedConfig(): SavedConfig {
     if (saved) {
       const config: unknown = JSON.parse(saved);
       if (
-        typeof config === "object" && config !== null &&
+        isObject(config) &&
         "organization" in config && typeof config.organization === "string" &&
         "project" in config && typeof config.project === "string" &&
         "areaPath" in config && typeof config.areaPath === "string"
