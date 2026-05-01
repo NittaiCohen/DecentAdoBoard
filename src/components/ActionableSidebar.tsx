@@ -5,6 +5,7 @@ import {
   STATE_BADGES,
   DEFAULT_STATE_BADGE,
 } from "../utils/workItemColors";
+import { computeActionableSet } from "../utils/actionable";
 
 interface ActionableSidebarProps {
   isOpen: boolean;
@@ -16,8 +17,6 @@ interface ActionableNode {
   workItem: WorkItem;
   children: ActionableNode[];
 }
-
-const DONE_STATES = new Set(["Done", "Closed", "Resolved", "Removed"]);
 
 const STATE_SORT_PRIORITY: Record<string, number> = {
   "In Review": 0,
@@ -57,59 +56,8 @@ function buildActionableTree(boardData?: BoardData): ActionableNode[] {
     return [];
   }
 
-  const stateMap = new Map(boardData.work_items.map((workItem) => [workItem.id, workItem.state]));
   const workItemMap = new Map(boardData.work_items.map((workItem) => [workItem.id, workItem]));
-
-  // A work item is actionable if:
-  // 1. It's not done
-  // 2. All its own predecessors are done
-  // 3. Its parent (if any) is also actionable
-  const actionableCache = new Map<number, boolean>();
-
-  const isActionable = (id: number): boolean => {
-    const cached = actionableCache.get(id);
-    if (cached !== undefined) {
-      return cached;
-    }
-
-    const workItem = workItemMap.get(id);
-    if (!workItem) {
-      actionableCache.set(id, false);
-      return false;
-    }
-
-    if (DONE_STATES.has(workItem.state)) {
-      actionableCache.set(id, false);
-      return false;
-    }
-
-    const predsComplete = workItem.predecessors.every((predId) => {
-      const predState = stateMap.get(predId);
-      return predState && DONE_STATES.has(predState);
-    });
-
-    if (!predsComplete) {
-      actionableCache.set(id, false);
-      return false;
-    }
-
-    if (workItem.parent_id) {
-      const parentActionable = isActionable(workItem.parent_id);
-      if (!parentActionable) {
-        actionableCache.set(id, false);
-        return false;
-      }
-    }
-
-    actionableCache.set(id, true);
-    return true;
-  };
-
-  const actionableSet = new Set(
-    boardData.work_items
-      .filter((workItem) => isActionable(workItem.id))
-      .map((workItem) => workItem.id),
-  );
+  const actionableSet = computeActionableSet(boardData.work_items);
 
   // Group actionable items by parent
   const childrenByParent = new Map<number, WorkItem[]>();

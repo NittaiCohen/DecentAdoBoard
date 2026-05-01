@@ -5,6 +5,7 @@ import type { BoardData, WorkItem } from "../types";
 import type { WorkItemNodeData } from "../components/WorkItemNode";
 import type { SprintDividerData } from "../components/SprintDivider";
 import type { ParentGroupData } from "../components/ParentGroup";
+import { computeActionableSet } from "./actionable";
 
 const NODE_HEIGHT = 80;
 const NODE_GAP_X = 60;
@@ -189,6 +190,7 @@ function renderExpandedGroup(
   workItemMap: Map<number, WorkItem>,
   expandedParents: Set<number>,
   doneStates: Set<string>,
+  actionableSet: Set<number>,
   columnExtent?: [[number, number], [number, number]],
 ): { width: number; height: number } {
   const childItems = workItem.children
@@ -257,6 +259,7 @@ function renderExpandedGroup(
         workItemMap,
         expandedParents,
         doneStates,
+        actionableSet,
       );
       childY += dims.height + NODE_GAP_Y;
     } else {
@@ -277,6 +280,7 @@ function renderExpandedGroup(
           workItem: child,
           isParent: childIsParent,
           isExpanded: false,
+          isActionable: actionableSet.has(child.id),
           childCount: child.children.length,
           doneChildCount: childDoneCount,
         },
@@ -322,6 +326,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   const workItemMap = new Map(work_items.map((workItem) => [workItem.id, workItem]));
   const doneStates = new Set(["Done", "Closed", "Resolved", "Removed"]);
   const iterationByPath = new Map(iterations.map((it) => [it.path, it]));
+  const actionableSet = computeActionableSet(work_items);
 
   // --- Phase 1: Identify multi-sprint parents (always, regardless of expanded) ---
   const multiSprintParentIds = new Set<number>();
@@ -743,6 +748,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
                 workItemMap,
                 expandedParents,
                 doneStates,
+                actionableSet,
               );
               childYPositions.set(child.id, childY);
               subColCurrentY.set(subColKey, childY + dims.height + NODE_GAP_Y);
@@ -763,6 +769,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
                   workItem: child,
                   isParent: childIsParent,
                   isExpanded: false,
+                  isActionable: actionableSet.has(child.id),
                   childCount: child.children.length,
                   doneChildCount: childDoneCount,
                 },
@@ -853,6 +860,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
             workItemMap,
             expandedParents,
             doneStates,
+            actionableSet,
             colExtent,
           );
           // gw tracked but column width is fixed at MIN_COLUMN_WIDTH
@@ -874,6 +882,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
               workItem,
               isParent,
               isExpanded: false,
+              isActionable: actionableSet.has(workItem.id),
               childCount: workItem.children.length,
               doneChildCount,
             },

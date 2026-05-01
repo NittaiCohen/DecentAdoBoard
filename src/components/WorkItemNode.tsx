@@ -12,6 +12,7 @@ export interface WorkItemNodeData extends Record<string, unknown> {
   workItem: WorkItem;
   isParent: boolean;
   isExpanded: boolean;
+  isActionable: boolean;
   childCount: number;
   doneChildCount: number;
   onToggleExpand?: (id: number) => void;
@@ -20,13 +21,22 @@ export interface WorkItemNodeData extends Record<string, unknown> {
 export type WorkItemNode = Node<WorkItemNodeData, "workItem">;
 
 function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
-  const { workItem, isParent, isExpanded, childCount, doneChildCount, onToggleExpand } = data;
+  const {
+    workItem,
+    isParent,
+    isExpanded,
+    isActionable,
+    childCount,
+    doneChildCount,
+    onToggleExpand,
+  } = data;
   const colorClass = TYPE_COLORS[workItem.work_item_type] ?? DEFAULT_TYPE_COLOR;
   const stateClass = STATE_BADGES[workItem.state] ?? DEFAULT_STATE_BADGE;
+  const actionableRing = isActionable ? "ring-2 ring-green-500 dark:ring-green-400" : "";
 
   return (
     <div
-      className={`rounded-lg border-l-4 px-3 py-2 min-w-[180px] max-w-[220px] shadow-md ${colorClass}`}
+      className={`rounded-lg border-l-4 px-3 py-2 min-w-[180px] max-w-[220px] shadow-md ${colorClass} ${actionableRing}`}
     >
       <Handle
         type="target"
