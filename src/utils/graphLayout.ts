@@ -38,6 +38,9 @@ const GROUP_PADDING = 20;
 const CHILD_WIDTH = 220;
 const HEADER_HEIGHT = 36;
 const MULTI_SPRINT_TYPES = new Set(["Epic", "Feature"]);
+const MIN_MULTI_SPRINT_PATHS = 2;
+const Y_EXTENT_MAX = 10000;
+const MIN_DIVIDER_HEIGHT_ROWS = 3;
 
 type NodeIdMap = Map<number, string>;
 
@@ -275,7 +278,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
     }
 
     const descendantPaths = collectDescendantIterPaths(workItem, workItemMap);
-    if (descendantPaths.size >= 2) {
+    if (descendantPaths.size >= MIN_MULTI_SPRINT_PATHS) {
       multiSprintParentIds.add(workItem.id);
       multiSprintPaths.set(workItem.id, descendantPaths);
       for (const childId of workItem.children) {
@@ -386,7 +389,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
 
         const multiSprintExtent: [[number, number], [number, number]] = [
           [minSpanX, TOP_OFFSET],
-          [minSpanX + spanWidth, 10000],
+          [minSpanX + spanWidth, Y_EXTENT_MAX],
         ];
 
         if (isExpanded) {
@@ -548,7 +551,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
         if (isParent && isExpanded) {
           const colExtent: [[number, number], [number, number]] = [
             [colX, TOP_OFFSET],
-            [colX + MIN_COLUMN_WIDTH, 10000],
+            [colX + MIN_COLUMN_WIDTH, Y_EXTENT_MAX],
           ];
           const { width: gw, height: gh } = renderExpandedGroup(
             workItem,
@@ -570,7 +573,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
           nodeIdMap.set(workItem.id, nodeId);
           const extentBounds: CoordExtent = [
             [colX, TOP_OFFSET],
-            [colX + MIN_COLUMN_WIDTH, 10000],
+            [colX + MIN_COLUMN_WIDTH, Y_EXTENT_MAX],
           ];
           nodes.push({
             id: nodeId,
@@ -595,7 +598,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   }
 
   // --- Phase 5: Sprint dividers (heights based on tallest column) ---
-  let overallMaxY = TOP_OFFSET + NODE_HEIGHT * 3;
+  let overallMaxY = TOP_OFFSET + NODE_HEIGHT * MIN_DIVIDER_HEIGHT_ROWS;
   for (const y of columnCurrentY.values()) {
     overallMaxY = Math.max(overallMaxY, y);
   }

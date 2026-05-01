@@ -49,6 +49,16 @@ export default tseslint.config(
   {
     rules: {
       curly: ["error", "all"],
+      "@typescript-eslint/no-magic-numbers": [
+        "error",
+        {
+          ignore: [-1, 0, 1, 2],
+          ignoreEnums: true,
+          ignoreNumericLiteralTypes: true,
+          ignoreReadonlyClassProperties: true,
+          ignoreTypeIndexes: true,
+        },
+      ],
     },
   },
 );

@@ -3,10 +3,12 @@ import ReactDOM from "react-dom/client";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import App from "./App";
 
+const STALE_TIME_MS = 300_000;
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime: 5 * 60 * 1000,
+      staleTime: STALE_TIME_MS,
       retry: 1,
     },
   },
