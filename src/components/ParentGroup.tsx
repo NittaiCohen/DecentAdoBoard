@@ -15,21 +15,23 @@ export interface ParentGroupData extends Record<string, unknown> {
 
 export type ParentGroupNode = Node<ParentGroupData, "parentGroup">;
 
-const TYPE_BORDER: Record<string, string> = {
-  Bug: "border-red-500",
-  Task: "border-yellow-500",
-  "User Story": "border-blue-500",
-  Feature: "border-purple-500",
-  Epic: "border-orange-500",
-  "Product Backlog Item": "border-blue-500",
+const TYPE_COLORS: Record<string, string> = {
+  Bug: "border-l-red-500 bg-red-950/30",
+  Task: "border-l-yellow-500 bg-yellow-950/30",
+  "User Story": "border-l-blue-500 bg-blue-950/30",
+  Feature: "border-l-purple-500 bg-purple-950/30",
+  Epic: "border-l-orange-500 bg-orange-950/30",
+  "Product Backlog Item": "border-l-blue-500 bg-blue-950/30",
 };
 
+const DEFAULT_COLORS = "border-l-gray-500 bg-gray-800/30";
+
 function ParentGroupComponent({ data }: NodeProps<ParentGroupNode>) {
-  const borderClass = TYPE_BORDER[data.workItemType] ?? "border-gray-500";
+  const colorClass = TYPE_COLORS[data.workItemType] ?? DEFAULT_COLORS;
 
   return (
     <div
-      className={`rounded-lg border-l-4 ${borderClass} bg-gray-800/60 border border-gray-600/50`}
+      className={`rounded-lg border-l-4 border border-gray-600/50 ${colorClass}`}
       style={{ width: data.width, height: data.height }}
     >
       <Handle type="target" position={Position.Left} className="!bg-gray-400 !w-2 !h-2" />
