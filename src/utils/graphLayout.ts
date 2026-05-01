@@ -232,7 +232,7 @@ function renderExpandedGroup(
       height: groupHeight,
       onToggleExpand: undefined,
     },
-    draggable: true,
+    draggable: !MULTI_SPRINT_TYPES.has(workItem.work_item_type),
     style: { width: groupWidth, height: groupHeight },
   };
   if (reactFlowParentId) {
@@ -696,7 +696,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
               height: initialGroupHeight,
               onToggleExpand: undefined,
             },
-            draggable: true,
+            draggable: false,
             extent: multiSprintExtent,
             style: { width: spanWidth, height: initialGroupHeight },
           };
@@ -712,8 +712,8 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
           for (const { child, path, depth, slotX } of childWithPlacement) {
             const subColKey = `${path}:${depth}`;
             const slotExtent: [[number, number], [number, number]] = [
-              [slotX, HEADER_HEIGHT],
-              [slotX + SUB_COLUMN_WIDTH - GROUP_PADDING * 2, Y_EXTENT_MAX],
+              [0, HEADER_HEIGHT],
+              [spanWidth, Y_EXTENT_MAX],
             ];
 
             // Determine Y position
@@ -824,7 +824,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
               height: collapsedHeight,
               onToggleExpand: undefined,
             },
-            draggable: true,
+            draggable: false,
             extent: multiSprintExtent,
             style: { width: spanWidth, height: collapsedHeight },
           });
