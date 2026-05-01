@@ -12,6 +12,13 @@ const queryClient = new QueryClient({
   },
 });
 
+// Clear stale query cache on hot module reload
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    queryClient.clear();
+  });
+}
+
 ReactDOM.createRoot(document.getElementById("root") as HTMLElement).render(
   <React.StrictMode>
     <QueryClientProvider client={queryClient}>
