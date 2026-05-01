@@ -5,7 +5,9 @@ const CONFIG_STORAGE_KEY = "ado-config";
 export function getSavedPat(): string | null {
   const pat = localStorage.getItem(PAT_STORAGE_KEY);
   const expiry = localStorage.getItem(PAT_EXPIRY_KEY);
-  if (!pat) return null;
+  if (!pat) {
+    return null;
+  }
   if (expiry) {
     const expiryDate = new Date(expiry);
     if (expiryDate <= new Date()) {
@@ -43,7 +45,9 @@ function isSavedConfig(value: unknown): value is SavedConfig {
 export function getSavedConfig(): SavedConfig | null {
   try {
     const saved = localStorage.getItem(CONFIG_STORAGE_KEY);
-    if (!saved) return null;
+    if (!saved) {
+      return null;
+    }
     const config: unknown = JSON.parse(saved);
     if (isSavedConfig(config)) {
       return config;

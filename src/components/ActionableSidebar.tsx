@@ -7,15 +7,21 @@ interface ActionableSidebarProps {
 }
 
 function getActionableItems(boardData?: BoardData): WorkItem[] {
-  if (!boardData) return [];
+  if (!boardData) {
+    return [];
+  }
 
   const stateMap = new Map(boardData.work_items.map((wi) => [wi.id, wi.state]));
 
   const doneStates = new Set(["Done", "Closed", "Resolved", "Removed"]);
 
   return boardData.work_items.filter((wi) => {
-    if (doneStates.has(wi.state)) return false;
-    if (wi.predecessors.length === 0) return true;
+    if (doneStates.has(wi.state)) {
+      return false;
+    }
+    if (wi.predecessors.length === 0) {
+      return true;
+    }
     return wi.predecessors.every((predId) => {
       const predState = stateMap.get(predId);
       return predState && doneStates.has(predState);

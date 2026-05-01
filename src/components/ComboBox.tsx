@@ -47,7 +47,9 @@ export default function ComboBox({
   }, [handleClickOutside]);
 
   function toggleOpen() {
-    if (disabled) return;
+    if (disabled) {
+      return;
+    }
     if (open) {
       setOpen(false);
       setFilter("");
@@ -73,7 +75,9 @@ export default function ComboBox({
           value={open ? filter : value}
           onChange={(e) => {
             setFilter(e.target.value);
-            if (!open) setOpen(true);
+            if (!open) {
+              setOpen(true);
+            }
           }}
           onFocus={() => {
             setOpen(true);

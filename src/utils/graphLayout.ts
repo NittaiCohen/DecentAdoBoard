@@ -254,20 +254,30 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
     multiSprintDescendantIds.add(id);
     const wi = workItemMap.get(id);
     if (wi) {
-      for (const cid of wi.children) markDescendants(cid);
+      for (const cid of wi.children) {
+        markDescendants(cid);
+      }
     }
   }
 
   for (const wi of work_items) {
-    if (wi.parent_id && workItemMap.has(wi.parent_id)) continue;
-    if (!MULTI_SPRINT_TYPES.has(wi.work_item_type)) continue;
-    if (wi.children.length === 0) continue;
+    if (wi.parent_id && workItemMap.has(wi.parent_id)) {
+      continue;
+    }
+    if (!MULTI_SPRINT_TYPES.has(wi.work_item_type)) {
+      continue;
+    }
+    if (wi.children.length === 0) {
+      continue;
+    }
 
     const descendantPaths = collectDescendantIterPaths(wi, workItemMap);
     if (descendantPaths.size >= 2) {
       multiSprintParentIds.add(wi.id);
       multiSprintPaths.set(wi.id, descendantPaths);
-      for (const cid of wi.children) markDescendants(cid);
+      for (const cid of wi.children) {
+        markDescendants(cid);
+      }
     }
   }
 
@@ -311,9 +321,13 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
 
   for (const wi of work_items) {
     // Skip descendants of multi-sprint parents
-    if (multiSprintDescendantIds.has(wi.id)) continue;
+    if (multiSprintDescendantIds.has(wi.id)) {
+      continue;
+    }
     // Skip children of non-multi-sprint parents
-    if (wi.parent_id && workItemMap.has(wi.parent_id) && !multiSprintParentIds.has(wi.id)) continue;
+    if (wi.parent_id && workItemMap.has(wi.parent_id) && !multiSprintParentIds.has(wi.id)) {
+      continue;
+    }
 
     let homeCol: string;
     if (multiSprintParentIds.has(wi.id)) {
@@ -331,7 +345,9 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   // --- Phase 4: Layout items per column (multi-sprint parents inline) ---
   // Shared Y tracker across columns — multi-sprint parents advance ALL spanned columns
   const columnCurrentY = new Map<string, number>();
-  for (const p of iterationPaths) columnCurrentY.set(p, TOP_OFFSET);
+  for (const p of iterationPaths) {
+    columnCurrentY.set(p, TOP_OFFSET);
+  }
 
   for (const iterPath of iterationPaths) {
     const colX = columnX.get(iterPath)!;
@@ -424,7 +440,9 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
           // Render children in their column slots
           for (const [childIterPath, children] of childrenByIter) {
             const childColX = columnX.get(childIterPath);
-            if (isNil(childColX)) continue;
+            if (isNil(childColX)) {
+              continue;
+            }
             const slotX = childColX - minSpanX + GROUP_PADDING;
             // Extent relative to parent group — constrain to this column slot
             const slotExtent: [[number, number], [number, number]] = [

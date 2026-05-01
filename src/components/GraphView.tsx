@@ -31,14 +31,18 @@ export default function GraphView({ boardData }: GraphViewProps) {
 
   // Expand all parents by default when board data loads
   useEffect(() => {
-    if (!boardData) return;
+    if (!boardData) {
+      return;
+    }
     const childIds = new Set(
       boardData.work_items.filter((wi) => !isNil(wi.parent_id)).map((wi) => wi.parent_id!),
     );
     // Only add new parents (don't reset user collapses)
     setExpandedParents((prev) => {
       const next = new Set(prev);
-      for (const id of childIds) next.add(id);
+      for (const id of childIds) {
+        next.add(id);
+      }
       return next;
     });
   }, [boardData]);
@@ -56,7 +60,9 @@ export default function GraphView({ boardData }: GraphViewProps) {
   }, []);
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(() => {
-    if (!boardData) return { nodes: [], edges: [] };
+    if (!boardData) {
+      return { nodes: [], edges: [] };
+    }
 
     const result = buildGraphLayout(boardData, expandedParents);
 
