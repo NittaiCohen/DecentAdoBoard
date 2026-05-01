@@ -51,6 +51,23 @@ interface SiblingInfo {
   height: number;
 }
 
+interface DragState {
+  draggedId: string;
+  draggedParent: string | undefined;
+  draggedOrigX: number;
+  draggedOrigY: number;
+  columnX: number;
+  draggedHeight: number;
+  draggedWidth: number;
+  siblings: SiblingInfo[];
+  baseY: number;
+  successorIds: Set<string>;
+  successorOriginalX: Map<string, number>;
+  xLocked: boolean;
+  lastInsertIdx: number;
+  lastSlotPositions: Map<string, number>;
+}
+
 /** Collect all recursive successor node IDs from a starting work item */
 function collectSuccessorChain(
   startId: number,
@@ -189,22 +206,7 @@ export default function GraphView({ boardData }: GraphViewProps) {
   }, [boardData]);
 
   // Drag reorder state: ordered list of column siblings + dragged node info
-  const dragRef = useRef<{
-    draggedId: string;
-    draggedParent: string | undefined;
-    draggedOrigX: number;
-    draggedOrigY: number;
-    columnX: number;
-    draggedHeight: number;
-    draggedWidth: number;
-    siblings: SiblingInfo[];
-    baseY: number;
-    successorIds: Set<string>;
-    successorOriginalX: Map<string, number>;
-    xLocked: boolean;
-    lastInsertIdx: number;
-    lastSlotPositions: Map<string, number>;
-  } | null>(null);
+  const dragRef = useRef<DragState | null>(null);
   const rafRef = useRef(0);
 
   const handleNodeDragStart = useCallback(
