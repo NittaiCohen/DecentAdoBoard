@@ -639,33 +639,39 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
 
           // Group children by effective sub-column key (path + depth)
           // Depths were pre-computed in Phase 3b and stored in multiSprintChildDepths
-          const childrenBySubCol = new Map<string, WorkItem[]>();
+          const childWithPlacement: {
+            child: WorkItem;
+            path: string;
+            depth: number;
+            slotX: number;
+          }[] = [];
           for (const child of directChildren) {
             const path = childPathMap.get(child.id) ?? child.iteration_path;
             const depth = multiSprintChildDepths.get(child.id) ?? 0;
-            const key = `${path}:${depth}`;
-            const group = childrenBySubCol.get(key) ?? [];
-            group.push(child);
-            childrenBySubCol.set(key, group);
+            const externalX = columnX.get(path);
+            const baseSlotX =
+              externalX !== undefined ? externalX - minSpanX + GROUP_PADDING : GROUP_PADDING;
+            const slotX = baseSlotX + depth * SUB_COLUMN_STRIDE;
+            childWithPlacement.push({ child, path, depth, slotX });
           }
 
-          // Measure max sub-column height
-          let maxSlotHeight = 0;
-          for (const [, children] of childrenBySubCol) {
-            let h = 0;
-            for (const child of children) {
-              const m = measureChildHeight(child, workItemMap, expandedParents, doneStates);
-              h += m.height + NODE_GAP_Y;
-            }
-            h -= NODE_GAP_Y;
-            maxSlotHeight = Math.max(maxSlotHeight, h);
-          }
+          // Sort by depth so we place predecessors before successors
+          childWithPlacement.sort((a, b) => a.depth - b.depth);
 
-          const groupHeight = HEADER_HEIGHT + GROUP_PADDING * 2 + maxSlotHeight;
+          // Pre-measure to estimate group height for initial node creation
+          let estimatedHeight = 0;
+          for (const { child } of childWithPlacement) {
+            const m = measureChildHeight(child, workItemMap, expandedParents, doneStates);
+            estimatedHeight = Math.max(estimatedHeight, m.height);
+          }
+          const initialGroupHeight =
+            HEADER_HEIGHT + GROUP_PADDING * 2 + estimatedHeight * directChildren.length;
+
           const groupId = `group-${workItem.id}`;
           nodeIdMap.set(workItem.id, groupId);
 
-          nodes.push({
+          // Create parent group node (height will be finalized after children are placed)
+          const groupNode: LayoutNode = {
             id: groupId,
             type: "parentGroup",
             position: { x: minSpanX, y: currentY },
@@ -677,74 +683,106 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
               childCount: workItem.children.length,
               doneChildCount,
               width: spanWidth,
-              height: groupHeight,
+              height: initialGroupHeight,
               onToggleExpand: undefined,
             },
             draggable: true,
             extent: multiSprintExtent,
-            style: { width: spanWidth, height: groupHeight },
-          });
+            style: { width: spanWidth, height: initialGroupHeight },
+          };
+          nodes.push(groupNode);
 
-          // Render children in their dependency-aware sub-column slots
-          // Child X positions align with external sprint divider columns
-          for (const [subColKey, children] of childrenBySubCol) {
-            const [childIterPath, depthStr] = subColKey.split(":");
-            const depth = Number(depthStr);
-            const externalX = columnX.get(childIterPath);
-            const baseSlotX =
-              externalX !== undefined ? externalX - minSpanX + GROUP_PADDING : GROUP_PADDING;
-            const slotX = baseSlotX + depth * SUB_COLUMN_STRIDE;
+          // Track Y positions per child ID (for successor alignment)
+          // and per sub-column key (for stacking unrelated items)
+          const childYPositions = new Map<number, number>();
+          const subColCurrentY = new Map<string, number>();
+
+          // Render children: depth-0 items stack normally,
+          // depth-1+ items align with their predecessor's Y position
+          for (const { child, path, depth, slotX } of childWithPlacement) {
+            const subColKey = `${path}:${depth}`;
             const slotExtent: [[number, number], [number, number]] = [
               [slotX, HEADER_HEIGHT],
-              [slotX + SUB_COLUMN_WIDTH - GROUP_PADDING * 2, groupHeight],
+              [slotX + SUB_COLUMN_WIDTH - GROUP_PADDING * 2, Y_EXTENT_MAX],
             ];
-            let childY = HEADER_HEIGHT + GROUP_PADDING;
 
-            for (const child of children) {
-              const childIsParent = child.children.length > 0;
-              const childIsExpanded = expandedParents.has(child.id);
-
-              if (childIsParent && childIsExpanded) {
-                const dims = renderExpandedGroup(
-                  child,
-                  slotX,
-                  childY,
-                  groupId,
-                  nodes,
-                  nodeIdMap,
-                  workItemMap,
-                  expandedParents,
-                  doneStates,
-                );
-                childY += dims.height + NODE_GAP_Y;
-              } else {
-                const childDoneCount = child.children.filter((childId) => {
-                  const childWorkItem = workItemMap.get(childId);
-                  return childWorkItem && doneStates.has(childWorkItem.state);
-                }).length;
-                const childNodeId = `wi-${child.id}`;
-                nodeIdMap.set(child.id, childNodeId);
-                nodes.push({
-                  id: childNodeId,
-                  type: "workItem",
-                  position: { x: slotX, y: childY },
-                  parentId: groupId,
-                  extent: slotExtent,
-                  data: {
-                    workItem: child,
-                    isParent: childIsParent,
-                    isExpanded: false,
-                    childCount: child.children.length,
-                    doneChildCount: childDoneCount,
-                  },
-                  draggable: true,
-                });
-                childY += NODE_HEIGHT + NODE_GAP_Y;
+            // Determine Y position
+            let childY: number;
+            if (depth > 0 && child.predecessors.length > 0) {
+              // Align with the max Y of predecessors (horizontal arrow)
+              let predMaxY = HEADER_HEIGHT + GROUP_PADDING;
+              for (const predId of child.predecessors) {
+                const predY = childYPositions.get(predId);
+                if (predY !== undefined) {
+                  predMaxY = Math.max(predMaxY, predY);
+                }
               }
+              // But don't overlap with existing items in this sub-column
+              const colY = subColCurrentY.get(subColKey) ?? HEADER_HEIGHT + GROUP_PADDING;
+              childY = Math.max(predMaxY, colY);
+            } else {
+              childY = subColCurrentY.get(subColKey) ?? HEADER_HEIGHT + GROUP_PADDING;
+            }
+
+            const childIsParent = child.children.length > 0;
+            const childIsExpanded = expandedParents.has(child.id);
+
+            if (childIsParent && childIsExpanded) {
+              const dims = renderExpandedGroup(
+                child,
+                slotX,
+                childY,
+                groupId,
+                nodes,
+                nodeIdMap,
+                workItemMap,
+                expandedParents,
+                doneStates,
+              );
+              childYPositions.set(child.id, childY);
+              subColCurrentY.set(subColKey, childY + dims.height + NODE_GAP_Y);
+            } else {
+              const childDoneCount = child.children.filter((childId) => {
+                const childWorkItem = workItemMap.get(childId);
+                return childWorkItem && doneStates.has(childWorkItem.state);
+              }).length;
+              const childNodeId = `wi-${child.id}`;
+              nodeIdMap.set(child.id, childNodeId);
+              nodes.push({
+                id: childNodeId,
+                type: "workItem",
+                position: { x: slotX, y: childY },
+                parentId: groupId,
+                extent: slotExtent,
+                data: {
+                  workItem: child,
+                  isParent: childIsParent,
+                  isExpanded: false,
+                  childCount: child.children.length,
+                  doneChildCount: childDoneCount,
+                },
+                draggable: true,
+              });
+              childYPositions.set(child.id, childY);
+              subColCurrentY.set(subColKey, childY + NODE_HEIGHT + NODE_GAP_Y);
             }
           }
 
-          currentY += groupHeight + NODE_GAP_Y;
+          // Finalize group height based on actual child placement
+          let actualMaxChildBottom = 0;
+          for (const y of subColCurrentY.values()) {
+            actualMaxChildBottom = Math.max(actualMaxChildBottom, y);
+          }
+          const finalGroupHeight = actualMaxChildBottom + GROUP_PADDING;
+
+          // Update the group node with the final height
+          groupNode.data = { ...groupNode.data, height: finalGroupHeight };
+          groupNode.style = { width: spanWidth, height: finalGroupHeight };
+
+          // Update slot extents for children (they reference groupHeight)
+          // Children already placed are fine — extents are just drag constraints
+
+          currentY += finalGroupHeight + NODE_GAP_Y;
           // Push all spanned effective columns' Y below this expanded container
           for (const p of descPaths) {
             const startC = sprintStartCol.get(p) ?? 0;
