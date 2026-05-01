@@ -59,6 +59,7 @@ export default tseslint.config(
           ignoreTypeIndexes: true,
         },
       ],
+      "@typescript-eslint/no-non-null-assertion": "error",
     },
   },
 );

@@ -1,5 +1,6 @@
 import type { Edge } from "@xyflow/react";
 import { MarkerType } from "@xyflow/react";
+import { isNil } from "lodash-es";
 import type { BoardData, WorkItem } from "../types";
 import type { WorkItemNodeData } from "../components/WorkItemNode";
 import type { SprintDividerData } from "../components/SprintDivider";
@@ -77,7 +78,10 @@ function computeDependencyDepths(
 
   let maxDepth = 0;
   while (queue.length > 0) {
-    const id = queue.shift()!;
+    const id = queue.shift();
+    if (isNil(id)) {
+      continue;
+    }
     const item = workItemMap.get(id);
     if (!item) {
       continue;
@@ -410,7 +414,10 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
 
     let homeCol: string;
     if (multiSprintParentIds.has(workItem.id)) {
-      const descPaths = multiSprintPaths.get(workItem.id)!;
+      const descPaths = multiSprintPaths.get(workItem.id);
+      if (!descPaths) {
+        continue;
+      }
       homeCol = findEarliestPath(descPaths, iterationByPath);
     } else {
       homeCol = workItem.iteration_path;
@@ -508,11 +515,14 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   while (crossShifted) {
     crossShifted = false;
     for (const id of allColumnItemIds) {
-      const item = workItemMap.get(id)!;
-      const myCol = itemEffCol.get(id)!;
+      const item = workItemMap.get(id);
+      const myCol = itemEffCol.get(id);
+      if (!item || isNil(myCol)) {
+        continue;
+      }
       for (const succId of item.successors) {
         const succCol = itemEffCol.get(succId);
-        if (succCol !== undefined && succCol <= myCol) {
+        if (!isNil(succCol) && succCol <= myCol) {
           itemEffCol.set(succId, myCol + 1);
           crossShifted = true;
         }
@@ -527,24 +537,9 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   }
 
   // Build effective column X positions
-  // Each sprint's first sub-column gets COLUMN_STRIDE spacing from other sprints
-  // Additional sub-columns within a sprint use the smaller SUB_COLUMN_STRIDE
+  // Each sprint starts after the previous sprint's full width
+  // Sub-columns within a sprint use the smaller SUB_COLUMN_STRIDE
   const effColumnX = new Map<number, number>();
-  for (const path of iterationPaths) {
-    const startCol = sprintStartCol.get(path) ?? 0;
-    const width = sprintWidths.get(path) ?? 1;
-    const sprintBaseX = SPRINT_PADDING + sprintStartCol.get(path)! * COLUMN_STRIDE;
-
-    // Adjust: only the first sub-column per sprint uses full COLUMN_STRIDE from previous sprint
-    // Subsequent sub-columns within the sprint use SUB_COLUMN_STRIDE offsets
-    // Recompute: sprint base X accounts for prior sprints' sub-column widths
-    for (let sub = 0; sub < width; sub++) {
-      effColumnX.set(startCol + sub, sprintBaseX + sub * SUB_COLUMN_STRIDE);
-    }
-  }
-
-  // Recalculate sprint base X properly: each sprint starts after the previous sprint's full width
-  effColumnX.clear();
   let sprintBaseX = SPRINT_PADDING;
   for (const path of iterationPaths) {
     const startCol = sprintStartCol.get(path) ?? 0;
@@ -561,7 +556,10 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   // Build groups by effective column
   const effColumnGroups = new Map<number, WorkItem[]>();
   for (const [id, col] of itemEffCol) {
-    const item = workItemMap.get(id)!;
+    const item = workItemMap.get(id);
+    if (!item) {
+      continue;
+    }
     const group = effColumnGroups.get(col) ?? [];
     group.push(item);
     effColumnGroups.set(col, group);
@@ -570,8 +568,11 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   // Update columnX to map sprint paths → effective X positions (for multi-sprint parent rendering)
   columnX.clear();
   for (const path of iterationPaths) {
-    const startCol = sprintStartCol.get(path)!;
-    columnX.set(path, effColumnX.get(startCol)!);
+    const startCol = sprintStartCol.get(path) ?? 0;
+    const x = effColumnX.get(startCol);
+    if (!isNil(x)) {
+      columnX.set(path, x);
+    }
   }
 
   // --- Phase 4: Layout items per effective column ---
@@ -581,7 +582,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   }
 
   for (let effCol = 0; effCol <= maxEffCol; effCol++) {
-    const colX = effColumnX.get(effCol)!;
+    const colX = effColumnX.get(effCol) ?? SPRINT_PADDING;
     const items = effColumnGroups.get(effCol) ?? [];
 
     const sortedItems = [...items].sort((a, b) => {
@@ -590,7 +591,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
       return aDone - bDone;
     });
 
-    let currentY = columnCurrentY.get(effCol)!;
+    let currentY = columnCurrentY.get(effCol) ?? TOP_OFFSET;
     for (const workItem of sortedItems) {
       const doneChildCount = workItem.children.filter((childId) => {
         const childWorkItem = workItemMap.get(childId);
@@ -599,13 +600,16 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
 
       if (multiSprintParentIds.has(workItem.id)) {
         // --- Multi-sprint parent (inline, spanning columns) ---
-        const descPaths = multiSprintPaths.get(workItem.id)!;
+        const descPaths = multiSprintPaths.get(workItem.id);
+        if (!descPaths) {
+          continue;
+        }
         // Compute the full X extent of spanned sprints, accounting for sub-columns
         const spannedRanges = [...descPaths]
           .map((p) => {
             const x = columnX.get(p);
             const w = sprintWidths.get(p) ?? 1;
-            return x !== undefined
+            return !isNil(x)
               ? { start: x, end: x + MIN_COLUMN_WIDTH + (w > 1 ? (w - 1) * SUB_COLUMN_STRIDE : 0) }
               : null;
           })
@@ -649,8 +653,9 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
             const path = childPathMap.get(child.id) ?? child.iteration_path;
             const depth = multiSprintChildDepths.get(child.id) ?? 0;
             const externalX = columnX.get(path);
-            const baseSlotX =
-              externalX !== undefined ? externalX - minSpanX + GROUP_PADDING : GROUP_PADDING;
+            const baseSlotX = !isNil(externalX)
+              ? externalX - minSpanX + GROUP_PADDING
+              : GROUP_PADDING;
             const slotX = baseSlotX + depth * SUB_COLUMN_STRIDE;
             childWithPlacement.push({ child, path, depth, slotX });
           }
@@ -713,7 +718,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
               let predMaxY = HEADER_HEIGHT + GROUP_PADDING;
               for (const predId of child.predecessors) {
                 const predY = childYPositions.get(predId);
-                if (predY !== undefined) {
+                if (!isNil(predY)) {
                   predMaxY = Math.max(predMaxY, predY);
                 }
               }
@@ -889,9 +894,9 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   }
 
   for (const iterPath of iterationPaths) {
-    const startCol = sprintStartCol.get(iterPath)!;
+    const startCol = sprintStartCol.get(iterPath) ?? 0;
     const width = sprintWidths.get(iterPath) ?? 1;
-    const colStartX = effColumnX.get(startCol)!;
+    const colStartX = effColumnX.get(startCol) ?? SPRINT_PADDING;
     const dividerWidth =
       MIN_COLUMN_WIDTH + (width > 1 ? (width - 1) * SUB_COLUMN_STRIDE : 0) + SPRINT_PADDING;
     const iterName = iterPath.split("\\").pop() ?? iterPath;

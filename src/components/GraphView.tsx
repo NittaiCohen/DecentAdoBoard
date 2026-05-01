@@ -10,7 +10,7 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import type { BoardData } from "../types";
+import type { BoardData, RequiredSome, WorkItem } from "../types";
 import WorkItemNodeComponent from "./WorkItemNode";
 import SprintDividerComponent from "./SprintDivider";
 import ParentGroupComponent from "./ParentGroup";
@@ -36,8 +36,10 @@ export default function GraphView({ boardData }: GraphViewProps) {
     }
     const childIds = new Set(
       boardData.work_items
-        .filter((workItem) => !isNil(workItem.parent_id))
-        .map((workItem) => workItem.parent_id!),
+        .filter(
+          (workItem): workItem is RequiredSome<WorkItem, "parent_id"> => !isNil(workItem.parent_id),
+        )
+        .map((workItem) => workItem.parent_id),
     );
     // Only add new parents (don't reset user collapses)
     setExpandedParents((prev) => {

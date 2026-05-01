@@ -8,3 +8,5 @@ export {
   type ProjectInfo,
   type TeamInfo,
 } from "./ado";
+
+export { type RequiredSome } from "./utils";
