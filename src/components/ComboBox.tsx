@@ -65,7 +65,7 @@ export default function ComboBox({
       {label && (
         <label className="block text-sm font-medium text-gray-300 mb-1">
           {label}
-          {loading && <span className="ml-2 text-xs text-gray-500">Loading...</span>}
+          {loading && <span className="ml-2 text-xs text-gray-500">{"Loading..."}</span>}
         </label>
       )}
       <div className="relative">
@@ -126,7 +126,7 @@ export default function ComboBox({
       )}
       {open && safeOptions.length > 0 && filtered.length === 0 && (
         <div className="absolute z-50 mt-1 w-full bg-gray-700 border border-gray-600 rounded shadow-lg px-3 py-2 text-sm text-gray-400">
-          No matches
+          {"No matches"}
         </div>
       )}
     </div>

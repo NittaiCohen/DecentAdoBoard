@@ -66,14 +66,14 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
         onSubmit={(e) => void handleSubmit(e)}
         className="bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-xl"
       >
-        <h1 className="text-xl font-bold text-gray-100 mb-2">DecentAdoBoard</h1>
+        <h1 className="text-xl font-bold text-gray-100 mb-2">{"Decent ADO Board"}</h1>
         <p className="text-sm text-gray-400 mb-6">
-          Enter a PAT manually, or generate one automatically using Azure CLI.
+          {"Enter a PAT manually, or generate one automatically using Azure CLI."}
         </p>
 
         <div>
           <label className="block text-sm font-medium text-gray-300 mb-1">
-            Personal Access Token
+            {"Personal Access Token"}
           </label>
           <input
             type="password"
@@ -87,12 +87,14 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
 
         <div className="mt-4 border-t border-gray-700 pt-4">
           <p className="text-xs text-gray-500 mb-2">
-            Or generate via Azure CLI (requires <code className="text-gray-400">az login</code>)
+            {`Or generate via Azure CLI (requires `}
+            <code className="text-gray-400">{"az login"}</code>
+            {`)`}
           </p>
 
           {orgChoices.length > 0 ? (
             <div className="space-y-2">
-              <p className="text-sm text-gray-300">Multiple organizations found. Select one:</p>
+              <p className="text-sm text-gray-300">{"Multiple organizations found. Select one:"}</p>
               <ComboBox
                 value={selectedOrg}
                 onChange={setSelectedOrg}

@@ -45,7 +45,7 @@ function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
       <Handle type="source" position={Position.Right} className="!bg-gray-400 !w-2 !h-2" />
 
       <div className="flex items-center gap-1.5 mb-1">
-        <span className="text-[10px] font-mono text-gray-400">#{workItem.id}</span>
+        <span className="text-[10px] font-mono text-gray-400">{`#${workItem.id}`}</span>
         <span className={`text-[10px] px-1 py-0.5 rounded ${stateClass}`}>{workItem.state}</span>
         {isParent && (
           <button
@@ -56,7 +56,7 @@ function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
             className="ml-auto text-[10px] text-gray-400 hover:text-gray-200"
             title={isExpanded ? "Collapse" : "Expand"}
           >
-            {isExpanded ? "▼" : "▶"} {doneChildCount}/{childCount}
+            {isExpanded ? "▼" : "▶"} {`${doneChildCount}/${childCount}`}
           </button>
         )}
       </div>

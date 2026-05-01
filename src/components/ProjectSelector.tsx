@@ -133,9 +133,9 @@ export default function ProjectSelector({ onConfigured, onBack }: ProjectSelecto
         onSubmit={(e) => void handleSubmit(e)}
         className="bg-gray-800 rounded-lg p-8 w-full max-w-md shadow-xl"
       >
-        <h1 className="text-xl font-bold text-gray-100 mb-2">Select Project</h1>
+        <h1 className="text-xl font-bold text-gray-100 mb-2">{"Select Project"}</h1>
         <p className="text-sm text-gray-400 mb-6">
-          Choose the organization, project, and area path to visualize.
+          {"Choose the organization, project, and area path to visualize."}
         </p>
 
         <div className="space-y-4">
@@ -182,7 +182,7 @@ export default function ProjectSelector({ onConfigured, onBack }: ProjectSelecto
             onClick={onBack}
             className="flex-shrink-0 bg-gray-700 hover:bg-gray-600 text-gray-200 font-medium py-2 px-4 rounded transition-colors"
           >
-            Back
+            {"Back"}
           </button>
           <button
             type="submit"

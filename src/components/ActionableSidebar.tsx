@@ -49,16 +49,16 @@ export default function ActionableSidebar({ isOpen, onToggle, boardData }: Actio
       {isOpen && (
         <div className="p-4 overflow-y-auto h-[calc(100%-2.5rem)]">
           <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wide mb-3">
-            Ready to Work ({actionableItems.length})
+            {`Ready to Work (${actionableItems.length})`}
           </h2>
           {actionableItems.length === 0 ? (
-            <p className="text-sm text-gray-500">No actionable work items found.</p>
+            <p className="text-sm text-gray-500">{"No actionable work items found."}</p>
           ) : (
             <div className="space-y-2">
               {actionableItems.map((item) => (
                 <div key={item.id} className="bg-gray-700 rounded p-3 border border-gray-600">
                   <div className="flex items-center gap-2 mb-1">
-                    <span className="text-xs font-mono text-gray-400">#{item.id}</span>
+                    <span className="text-xs font-mono text-gray-400">{`#${item.id}`}</span>
                     <span className="text-xs px-1.5 py-0.5 rounded bg-gray-600 text-gray-300">
                       {item.work_item_type}
                     </span>

@@ -29,6 +29,13 @@ export default tseslint.config(
       "react-hooks/set-state-in-effect": "off",
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "no-console": "warn",
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "JSXElement > JSXText[value=/\\S/]",
+          message: 'JSX text must be wrapped in braces, e.g. {"text"} instead of bare text',
+        },
+      ],
       eqeqeq: ["error", "always"],
       "@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "never" }],
       "@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports" }],
