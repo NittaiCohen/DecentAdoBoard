@@ -609,9 +609,9 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
           .map((p) => {
             const x = columnX.get(p);
             const w = sprintWidths.get(p) ?? 1;
-            return !isNil(x)
-              ? { start: x, end: x + MIN_COLUMN_WIDTH + (w > 1 ? (w - 1) * SUB_COLUMN_STRIDE : 0) }
-              : null;
+            return isNil(x)
+              ? null
+              : { start: x, end: x + MIN_COLUMN_WIDTH + (w > 1 ? (w - 1) * SUB_COLUMN_STRIDE : 0) };
           })
           .filter((r): r is { start: number; end: number } => r !== null);
         const minSpanX = Math.min(colX, ...spannedRanges.map((r) => r.start));
@@ -653,9 +653,9 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
             const path = childPathMap.get(child.id) ?? child.iteration_path;
             const depth = multiSprintChildDepths.get(child.id) ?? 0;
             const externalX = columnX.get(path);
-            const baseSlotX = !isNil(externalX)
-              ? externalX - minSpanX + GROUP_PADDING
-              : GROUP_PADDING;
+            const baseSlotX = isNil(externalX)
+              ? GROUP_PADDING
+              : externalX - minSpanX + GROUP_PADDING;
             const slotX = baseSlotX + depth * SUB_COLUMN_STRIDE;
             childWithPlacement.push({ child, path, depth, slotX });
           }

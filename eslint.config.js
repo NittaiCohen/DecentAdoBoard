@@ -60,6 +60,7 @@ export default tseslint.config(
         },
       ],
       "@typescript-eslint/no-non-null-assertion": "error",
+      "no-negated-condition": "error",
     },
   },
 );
