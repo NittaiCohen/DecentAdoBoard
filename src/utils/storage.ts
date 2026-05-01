@@ -26,19 +26,17 @@ interface SavedConfig {
 }
 
 import { isObject } from "lodash-es";
+import { isNonEmptyString } from "./typeGuards";
 
 function isSavedConfig(value: unknown): value is SavedConfig {
   return (
     isObject(value) &&
     "organization" in value &&
-    typeof value.organization === "string" &&
-    value.organization !== "" &&
     "project" in value &&
-    typeof value.project === "string" &&
-    value.project !== "" &&
     "areaPath" in value &&
-    typeof value.areaPath === "string" &&
-    value.areaPath !== ""
+    isNonEmptyString(value.organization) &&
+    isNonEmptyString(value.project) &&
+    isNonEmptyString(value.areaPath)
   );
 }
 

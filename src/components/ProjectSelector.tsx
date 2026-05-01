@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { isObject } from "lodash-es";
+import { isObject, isString } from "lodash-es";
 import {
   setConfigTauri,
   listOrganizationsTauri,
@@ -25,11 +25,11 @@ function isSavedConfig(value: unknown): value is SavedConfig {
   return (
     isObject(value) &&
     "organization" in value &&
-    typeof value.organization === "string" &&
     "project" in value &&
-    typeof value.project === "string" &&
     "areaPath" in value &&
-    typeof value.areaPath === "string"
+    isString(value.organization) &&
+    isString(value.project) &&
+    isString(value.areaPath)
   );
 }
 
