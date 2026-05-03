@@ -61,6 +61,7 @@ export default tseslint.config(
       ],
       "@typescript-eslint/no-non-null-assertion": "error",
       "no-negated-condition": "error",
+      "max-lines-per-function": ["warn", { max: 75, skipBlankLines: true, skipComments: true }],
     },
   },
 );

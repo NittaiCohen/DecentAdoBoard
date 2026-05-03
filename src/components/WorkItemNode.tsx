@@ -20,18 +20,33 @@ export interface WorkItemNodeData extends Record<string, unknown> {
 
 export type WorkItemNode = Node<WorkItemNodeData, "workItem">;
 
-function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
-  const {
-    workItem,
-    isParent,
-    isExpanded,
-    isActionable,
-    childCount,
-    doneChildCount,
-    onToggleExpand,
-  } = data;
-  const colorClass = TYPE_COLORS[workItem.work_item_type] ?? DEFAULT_TYPE_COLOR;
+function WorkItemHeader({ data }: { data: WorkItemNodeData }) {
+  const { workItem, isParent, isExpanded, childCount, doneChildCount, onToggleExpand } = data;
   const stateClass = STATE_BADGES[workItem.state] ?? DEFAULT_STATE_BADGE;
+
+  return (
+    <div className="flex items-center gap-1.5 mb-1">
+      <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">{`#${workItem.id}`}</span>
+      <span className={`text-[10px] px-1 py-0.5 rounded ${stateClass}`}>{workItem.state}</span>
+      {isParent && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleExpand?.(workItem.id);
+          }}
+          className="ml-auto text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
+          title={isExpanded ? "Collapse" : "Expand"}
+        >
+          {isExpanded ? "▼" : "▶"} {`${doneChildCount}/${childCount}`}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
+  const { workItem, isActionable } = data;
+  const colorClass = TYPE_COLORS[workItem.work_item_type] ?? DEFAULT_TYPE_COLOR;
   const actionableRing = isActionable ? "ring-2 ring-green-500 dark:ring-green-400" : "";
 
   return (
@@ -49,22 +64,7 @@ function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
         className="!bg-gray-500 dark:!bg-gray-400 !w-2 !h-2"
       />
 
-      <div className="flex items-center gap-1.5 mb-1">
-        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">{`#${workItem.id}`}</span>
-        <span className={`text-[10px] px-1 py-0.5 rounded ${stateClass}`}>{workItem.state}</span>
-        {isParent && (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleExpand?.(workItem.id);
-            }}
-            className="ml-auto text-[10px] text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"
-            title={isExpanded ? "Collapse" : "Expand"}
-          >
-            {isExpanded ? "▼" : "▶"} {`${doneChildCount}/${childCount}`}
-          </button>
-        )}
-      </div>
+      <WorkItemHeader data={data} />
 
       <p
         className="text-xs text-gray-900 dark:text-gray-100 leading-tight line-clamp-2"

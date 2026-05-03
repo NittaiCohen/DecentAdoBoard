@@ -7,15 +7,144 @@ interface PatLoginProps {
   onAuthenticated: () => void;
 }
 
+function OrgSelector({
+  orgChoices,
+  selectedOrg,
+  setSelectedOrg,
+  generating,
+  onGenerate,
+}: {
+  orgChoices: string[];
+  selectedOrg: string;
+  setSelectedOrg: (org: string) => void;
+  generating: boolean;
+  onGenerate: (org: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-sm text-gray-700 dark:text-gray-300">
+        {"Multiple organizations found. Select one:"}
+      </p>
+      <ComboBox
+        value={selectedOrg}
+        onChange={setSelectedOrg}
+        options={orgChoices}
+        placeholder="Search organizations..."
+      />
+      <button
+        type="button"
+        onClick={() => onGenerate(selectedOrg)}
+        disabled={generating || !selectedOrg}
+        className="w-full bg-green-700 hover:bg-green-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-medium py-2 px-3 rounded transition-colors"
+      >
+        {generating ? "Generating..." : "Generate PAT"}
+      </button>
+    </div>
+  );
+}
+
+function usePatGeneration(setPat: (pat: string) => void) {
+  const [generating, setGenerating] = useState(false);
+  const [genResult, setGenResult] = useState("");
+  const [error, setError] = useState("");
+  const [orgChoices, setOrgChoices] = useState<string[]>([]);
+  const [selectedOrg, setSelectedOrg] = useState("");
+
+  async function handleGenerate(org?: string) {
+    setError("");
+    setGenerating(true);
+    setGenResult("");
+    setOrgChoices([]);
+
+    try {
+      const result = await generatePatTauri(org);
+      setPat(result.pat);
+      savePat(result.pat, result.valid_to);
+      localStorage.setItem("ado_organization", result.organization);
+      setGenResult(`PAT created for "${result.organization}", valid until ${result.valid_to}`);
+    } catch (err) {
+      const msg = String(err);
+      if (msg.includes("MULTIPLE_ORGS:")) {
+        const orgs = msg.split("MULTIPLE_ORGS:")[1].split(",").sort();
+        setOrgChoices(orgs);
+        setSelectedOrg(orgs[0]);
+      } else {
+        setError(msg);
+      }
+    } finally {
+      setGenerating(false);
+    }
+  }
+
+  return {
+    generating,
+    genResult,
+    genError: error,
+    orgChoices,
+    selectedOrg,
+    setSelectedOrg,
+    handleGenerate,
+  };
+}
+
+function GenerateSection({
+  generating,
+  genResult,
+  orgChoices,
+  selectedOrg,
+  setSelectedOrg,
+  onGenerate,
+}: {
+  generating: boolean;
+  genResult: string;
+  orgChoices: string[];
+  selectedOrg: string;
+  setSelectedOrg: (org: string) => void;
+  onGenerate: (org?: string) => void;
+}) {
+  return (
+    <>
+      <div className="mt-4 border-t border-gray-300 dark:border-gray-700 pt-4">
+        <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
+          {`Or generate via Azure CLI (requires `}
+          <code className="text-gray-500 dark:text-gray-400">{"az login"}</code>
+          {`)`}
+        </p>
+
+        {orgChoices.length > 0 ? (
+          <OrgSelector
+            orgChoices={orgChoices}
+            selectedOrg={selectedOrg}
+            setSelectedOrg={setSelectedOrg}
+            generating={generating}
+            onGenerate={onGenerate}
+          />
+        ) : (
+          <button
+            type="button"
+            onClick={() => onGenerate()}
+            disabled={generating}
+            className="w-full bg-green-700 hover:bg-green-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-medium py-2 px-3 rounded transition-colors"
+          >
+            {generating ? "Generating..." : "Generate PAT automatically"}
+          </button>
+        )}
+      </div>
+
+      {genResult && (
+        <p className="mt-3 text-sm text-green-600 dark:text-green-400 bg-green-100/30 dark:bg-green-900/30 rounded p-2">
+          {genResult}
+        </p>
+      )}
+    </>
+  );
+}
+
 export default function PatLogin({ onAuthenticated }: PatLoginProps) {
   const [pat, setPat] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
-  const [genResult, setGenResult] = useState("");
-  // When multiple orgs are found, let the user pick
-  const [orgChoices, setOrgChoices] = useState<string[]>([]);
-  const [selectedOrg, setSelectedOrg] = useState("");
+  const gen = usePatGeneration(setPat);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,32 +162,7 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
     }
   }
 
-  async function handleGenerate(org?: string) {
-    setError("");
-    setGenerating(true);
-    setGenResult("");
-    setOrgChoices([]);
-
-    try {
-      const result = await generatePatTauri(org);
-      setPat(result.pat);
-      savePat(result.pat, result.valid_to);
-      localStorage.setItem("ado_organization", result.organization);
-      setGenResult(`PAT created for "${result.organization}", valid until ${result.valid_to}`);
-    } catch (err) {
-      const msg = String(err);
-      // Backend returns "MULTIPLE_ORGS:org1,org2,..." when multiple orgs found
-      if (msg.includes("MULTIPLE_ORGS:")) {
-        const orgs = msg.split("MULTIPLE_ORGS:")[1].split(",").sort();
-        setOrgChoices(orgs);
-        setSelectedOrg(orgs[0]);
-      } else {
-        setError(msg);
-      }
-    } finally {
-      setGenerating(false);
-    }
-  }
+  const displayError = error || gen.genError;
 
   return (
     <div className="flex items-center justify-center h-screen w-screen bg-gray-50 dark:bg-gray-900">
@@ -87,54 +191,18 @@ export default function PatLogin({ onAuthenticated }: PatLoginProps) {
           />
         </div>
 
-        <div className="mt-4 border-t border-gray-300 dark:border-gray-700 pt-4">
-          <p className="text-xs text-gray-400 dark:text-gray-500 mb-2">
-            {`Or generate via Azure CLI (requires `}
-            <code className="text-gray-500 dark:text-gray-400">{"az login"}</code>
-            {`)`}
-          </p>
+        <GenerateSection
+          generating={gen.generating}
+          genResult={gen.genResult}
+          orgChoices={gen.orgChoices}
+          selectedOrg={gen.selectedOrg}
+          setSelectedOrg={gen.setSelectedOrg}
+          onGenerate={(org) => void gen.handleGenerate(org)}
+        />
 
-          {orgChoices.length > 0 ? (
-            <div className="space-y-2">
-              <p className="text-sm text-gray-700 dark:text-gray-300">
-                {"Multiple organizations found. Select one:"}
-              </p>
-              <ComboBox
-                value={selectedOrg}
-                onChange={setSelectedOrg}
-                options={orgChoices}
-                placeholder="Search organizations..."
-              />
-              <button
-                type="button"
-                onClick={() => void handleGenerate(selectedOrg)}
-                disabled={generating || !selectedOrg}
-                className="w-full bg-green-700 hover:bg-green-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-medium py-2 px-3 rounded transition-colors"
-              >
-                {generating ? "Generating..." : "Generate PAT"}
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => void handleGenerate()}
-              disabled={generating}
-              className="w-full bg-green-700 hover:bg-green-600 disabled:bg-gray-300 dark:disabled:bg-gray-600 disabled:cursor-not-allowed text-white text-sm font-medium py-2 px-3 rounded transition-colors"
-            >
-              {generating ? "Generating..." : "Generate PAT automatically"}
-            </button>
-          )}
-        </div>
-
-        {genResult && (
-          <p className="mt-3 text-sm text-green-600 dark:text-green-400 bg-green-100/30 dark:bg-green-900/30 rounded p-2">
-            {genResult}
-          </p>
-        )}
-
-        {error && (
+        {displayError && (
           <p className="mt-3 text-sm text-red-600 dark:text-red-400 bg-red-100/30 dark:bg-red-900/30 rounded p-2">
-            {error}
+            {displayError}
           </p>
         )}
 

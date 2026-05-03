@@ -51,6 +51,21 @@ function countLeafItems(nodes: ActionableNode[]): number {
   return count;
 }
 
+function groupActionableByParent(
+  workItems: WorkItem[],
+  actionableSet: Set<number>,
+): Map<number, WorkItem[]> {
+  const childrenByParent = new Map<number, WorkItem[]>();
+  for (const workItem of workItems) {
+    if (workItem.parent_id && actionableSet.has(workItem.id)) {
+      const existing = childrenByParent.get(workItem.parent_id) ?? [];
+      existing.push(workItem);
+      childrenByParent.set(workItem.parent_id, existing);
+    }
+  }
+  return childrenByParent;
+}
+
 function buildActionableTree(boardData?: BoardData): ActionableNode[] {
   if (!boardData) {
     return [];
@@ -58,16 +73,7 @@ function buildActionableTree(boardData?: BoardData): ActionableNode[] {
 
   const workItemMap = new Map(boardData.work_items.map((workItem) => [workItem.id, workItem]));
   const actionableSet = computeActionableSet(boardData.work_items);
-
-  // Group actionable items by parent
-  const childrenByParent = new Map<number, WorkItem[]>();
-  for (const workItem of boardData.work_items) {
-    if (workItem.parent_id && actionableSet.has(workItem.id)) {
-      const existing = childrenByParent.get(workItem.parent_id) ?? [];
-      existing.push(workItem);
-      childrenByParent.set(workItem.parent_id, existing);
-    }
-  }
+  const childrenByParent = groupActionableByParent(boardData.work_items, actionableSet);
 
   // Recursively build tree nodes
   const buildNode = (workItem: WorkItem): ActionableNode => {
