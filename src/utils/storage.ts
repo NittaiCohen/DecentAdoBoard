@@ -2,6 +2,7 @@ const PAT_STORAGE_KEY = "ado_pat";
 const PAT_EXPIRY_KEY = "ado_pat_expiry";
 const CONFIG_STORAGE_KEY = "ado-config";
 
+/** Retrieve the saved PAT from localStorage, returning null if missing or expired. */
 export function getSavedPat(): string | null {
   const pat = localStorage.getItem(PAT_STORAGE_KEY);
   const expiry = localStorage.getItem(PAT_EXPIRY_KEY);
@@ -28,6 +29,7 @@ interface SavedConfig {
 import { isObject } from "lodash-es";
 import { isNonEmptyString } from "./typeGuards";
 
+/** Type guard to check if a value is a valid SavedConfig object. */
 function isSavedConfig(value: unknown): value is SavedConfig {
   return (
     isObject(value) &&
@@ -40,6 +42,7 @@ function isSavedConfig(value: unknown): value is SavedConfig {
   );
 }
 
+/** Retrieve the saved project configuration from localStorage, returning null if missing or invalid. */
 export function getSavedConfig(): SavedConfig | null {
   try {
     const saved = localStorage.getItem(CONFIG_STORAGE_KEY);
@@ -56,6 +59,7 @@ export function getSavedConfig(): SavedConfig | null {
   return null;
 }
 
+/** Save a PAT and optional expiry date to localStorage. */
 export function savePat(pat: string, validTo?: string) {
   localStorage.setItem(PAT_STORAGE_KEY, pat);
   if (validTo) {
@@ -65,6 +69,7 @@ export function savePat(pat: string, validTo?: string) {
   }
 }
 
+/** Remove the saved PAT and its expiry from localStorage. */
 export function clearPat() {
   localStorage.removeItem(PAT_STORAGE_KEY);
   localStorage.removeItem(PAT_EXPIRY_KEY);

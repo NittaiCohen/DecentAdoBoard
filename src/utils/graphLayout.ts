@@ -58,7 +58,7 @@ type NodeIdMap = Map<number, string>;
  * Compute dependency depth for a set of items using Kahn's algorithm.
  * Returns a map of item ID → depth (0 = no predecessors in the set).
  */
-function computeLocalInDegrees(items: WorkItem[], itemIds: Set<number>): Map<number, number> {
+function countPredecessorsInSet(items: WorkItem[], itemIds: Set<number>): Map<number, number> {
   const localInDeg = new Map<number, number>();
   for (const item of items) {
     let deg = 0;
@@ -72,16 +72,16 @@ function computeLocalInDegrees(items: WorkItem[], itemIds: Set<number>): Map<num
   return localInDeg;
 }
 
-function computeDependencyDepths(
+export function computeDependencyDepths(
   items: WorkItem[],
   workItemMap: Map<number, WorkItem>,
 ): { depths: Map<number, number>; maxDepth: number } {
   const itemIds = new Set(items.map((item) => item.id));
-  const localInDeg = computeLocalInDegrees(items, itemIds);
+  const predecessorsInSet = countPredecessorsInSet(items, itemIds);
 
   const queue: number[] = [];
   const depths = new Map<number, number>();
-  for (const [id, deg] of localInDeg) {
+  for (const [id, deg] of predecessorsInSet) {
     if (deg === 0) {
       queue.push(id);
       depths.set(id, 0);
@@ -111,8 +111,8 @@ function computeDependencyDepths(
       }
       maxDepth = Math.max(maxDepth, newDepth);
 
-      const newDeg = (localInDeg.get(succId) ?? 1) - 1;
-      localInDeg.set(succId, newDeg);
+      const newDeg = (predecessorsInSet.get(succId) ?? 1) - 1;
+      predecessorsInSet.set(succId, newDeg);
       if (newDeg === 0) {
         queue.push(succId);
       }
@@ -197,6 +197,7 @@ interface RenderContext {
   actionableSet: Set<number>;
 }
 
+/** Count how many of a work item's direct children are in a done state. */
 function countDoneChildren(workItem: WorkItem, ctx: RenderContext): number {
   return workItem.children.filter((childId) => {
     const child = ctx.workItemMap.get(childId);
@@ -204,6 +205,7 @@ function countDoneChildren(workItem: WorkItem, ctx: RenderContext): number {
   }).length;
 }
 
+/** Render child work item nodes inside a single-column expanded group, returning the final Y cursor. */
 function renderChildNodes(childItems: WorkItem[], groupId: string, ctx: RenderContext): number {
   let childY = HEADER_HEIGHT + GROUP_PADDING;
   for (const child of childItems) {
@@ -260,6 +262,7 @@ function measureGroupDimensions(
   };
 }
 
+/** Recursively render an expanded parent group (single-column) and return its dimensions. */
 function renderExpandedGroup(
   workItem: WorkItem,
   x: number,
@@ -357,6 +360,7 @@ interface ColumnPlan {
 
 // --- Phase 1: Identify multi-sprint parents ---
 
+/** Recursively add a work item and all its descendants to the target set. */
 function markDescendants(
   id: number,
   workItemMap: Map<number, WorkItem>,
@@ -371,6 +375,7 @@ function markDescendants(
   }
 }
 
+/** Identify top-level Epic/Feature parents whose children span multiple sprints. */
 function identifyMultiSprintParents(
   workItems: WorkItem[],
   workItemMap: Map<number, WorkItem>,
@@ -405,6 +410,7 @@ function identifyMultiSprintParents(
 
 // --- Phase 2: Sort iterations and group items by sprint ---
 
+/** Sort iterations chronologically and group work items by sprint. */
 function buildIterationInfo(
   workItems: WorkItem[],
   iterations: Iteration[],
@@ -443,6 +449,7 @@ function buildIterationInfo(
   return { iterationPaths, iterationByPath, currentIterPath, iterationGroups };
 }
 
+/** Assign each visible work item to its home sprint column. */
 function groupItemsBySprint(
   workItems: WorkItem[],
   multiSprint: MultiSprintInfo,
@@ -484,6 +491,7 @@ function groupItemsBySprint(
 
 // --- Phase 3: Compute effective columns ---
 
+/** Compute dependency depths within each sprint and determine how many columns each sprint needs. */
 function computeSprintDepths(
   iterInfo: IterationInfo,
   workItemMap: Map<number, WorkItem>,
@@ -508,6 +516,7 @@ function computeSprintDepths(
   return { withinSprintDepth, sprintWidths };
 }
 
+/** Compute dependency depths for children inside multi-sprint parent groups, widening sprint columns as needed. */
 function computeMultiSprintChildDepths(
   multiSprint: MultiSprintInfo,
   workItemMap: Map<number, WorkItem>,
@@ -552,6 +561,7 @@ function computeMultiSprintChildDepths(
   return childDepths;
 }
 
+/** Build the full column layout plan: effective column assignments, X positions, and column groupings. */
 function buildColumnPlan(
   iterInfo: IterationInfo,
   multiSprint: MultiSprintInfo,
@@ -626,20 +636,23 @@ function buildColumnPlan(
   };
 }
 
-function enforceSuccessorOrdering(
+export function enforceSuccessorOrdering(
   itemEffCol: Map<number, number>,
   workItemMap: Map<number, WorkItem>,
 ): void {
-  const allColumnItemIds = new Set(itemEffCol.keys());
-  let crossShifted = true;
-  while (crossShifted) {
-    crossShifted = false;
+  const allColumnItemIds = [...itemEffCol.keys()];
+  const maxPasses = allColumnItemIds.length;
+
+  for (let pass = 0; pass < maxPasses; pass++) {
+    let crossShifted = false;
+
     for (const id of allColumnItemIds) {
       const item = workItemMap.get(id);
       const myCol = itemEffCol.get(id);
       if (!item || isNil(myCol)) {
         continue;
       }
+
       for (const succId of item.successors) {
         const succCol = itemEffCol.get(succId);
         if (!isNil(succCol) && succCol <= myCol) {
@@ -648,9 +661,14 @@ function enforceSuccessorOrdering(
         }
       }
     }
+
+    if (!crossShifted) {
+      break;
+    }
   }
 }
 
+/** Map each effective column index to its pixel X position. */
 function buildEffColumnXPositions(
   iterationPaths: string[],
   sprintStartCol: Map<string, number>,
@@ -678,6 +696,7 @@ interface MultiSprintSpan {
   extent: CoordExtent;
 }
 
+/** Compute the horizontal span (pixel range and extent) of a multi-sprint parent across its descendant sprints. */
 function computeMultiSprintSpan(
   colX: number,
   descPaths: Set<string>,
@@ -710,6 +729,7 @@ interface ChildPlacement {
   slotX: number;
 }
 
+/** Determine the sprint placement and X slot for each direct child of a multi-sprint parent. */
 function computeChildPlacements(
   directChildren: WorkItem[],
   workItemMap: Map<number, WorkItem>,
@@ -735,6 +755,7 @@ function computeChildPlacements(
   return placements;
 }
 
+/** Render the children of a multi-sprint parent, placing them into per-sprint sub-columns. */
 function renderMultiSprintChildren(
   placements: ChildPlacement[],
   groupId: string,
@@ -787,6 +808,7 @@ function renderMultiSprintChildren(
   return subColCurrentY;
 }
 
+/** Compute the Y position for a child node, aligning with predecessors if applicable. */
 function computeChildY(
   child: WorkItem,
   depth: number,
@@ -808,6 +830,7 @@ function computeChildY(
   return subColCurrentY.get(subColKey) ?? HEADER_HEIGHT + GROUP_PADDING;
 }
 
+/** Layout an expanded multi-sprint parent group, rendering its children and returning the group height. */
 function layoutExpandedMultiSprint(
   workItem: WorkItem,
   currentY: number,
@@ -876,6 +899,7 @@ function layoutExpandedMultiSprint(
   return finalGroupHeight;
 }
 
+/** Layout a collapsed multi-sprint parent as a single-height node, returning its height. */
 function layoutCollapsedMultiSprint(
   workItem: WorkItem,
   currentY: number,
@@ -910,6 +934,7 @@ function layoutCollapsedMultiSprint(
   return collapsedHeight;
 }
 
+/** Advance the Y cursor for all columns spanned by a multi-sprint parent after placing it. */
 function advanceSpannedColumns(
   descPaths: Set<string>,
   newY: number,
@@ -926,6 +951,7 @@ function advanceSpannedColumns(
   }
 }
 
+/** Layout a regular (non-multi-sprint) work item or expanded parent, returning its height. */
 function layoutRegularItem(
   workItem: WorkItem,
   colX: number,
@@ -965,6 +991,7 @@ function layoutRegularItem(
   return NODE_HEIGHT;
 }
 
+/** Walk each effective column left-to-right, placing items vertically and returning per-column Y cursors. */
 function layoutAllColumns(
   plan: ColumnPlan,
   multiSprint: MultiSprintInfo,
@@ -1028,6 +1055,7 @@ function layoutAllColumns(
 
 // --- Phase 5: Sprint dividers ---
 
+/** Create sprint divider background nodes spanning the full board height. */
 function createSprintDividers(
   iterInfo: IterationInfo,
   plan: ColumnPlan,
@@ -1069,6 +1097,7 @@ function createSprintDividers(
 
 // --- Phase 6: Build edges ---
 
+/** Create ReactFlow edges for all predecessor→successor dependency relations. */
 function buildDependencyEdges(
   workItems: WorkItem[],
   workItemMap: Map<number, WorkItem>,
@@ -1103,6 +1132,31 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   const nodeIdMap: NodeIdMap = new Map();
 
   if (work_items.length === 0) {
+    const sortedIterations = [...iterations].sort((a, b) => {
+      if (a.start_date && b.start_date) {
+        return a.start_date.localeCompare(b.start_date);
+      }
+      return a.path.localeCompare(b.path);
+    });
+
+    sortedIterations.forEach((iteration, index) => {
+      nodes.push({
+        id: `sprint-${iteration.path}`,
+        type: "sprintDivider",
+        position: { x: index * (MIN_COLUMN_WIDTH + NODE_GAP_X) + SPRINT_PADDING / 2, y: 0 },
+        data: {
+          label: iteration.path.split("\\").pop() ?? iteration.path,
+          startDate: iteration.start_date,
+          finishDate: iteration.finish_date,
+          height: TOP_OFFSET + NODE_HEIGHT * MIN_DIVIDER_HEIGHT_ROWS + SPRINT_PADDING,
+          width: MIN_COLUMN_WIDTH + SPRINT_PADDING,
+          isCurrent: false,
+        },
+        draggable: false,
+        style: { zIndex: -1 },
+      });
+    });
+
     return { nodes, edges };
   }
 

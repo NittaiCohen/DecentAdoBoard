@@ -28,10 +28,12 @@ const STATE_SORT_PRIORITY: Record<string, number> = {
 
 const DEFAULT_STATE_PRIORITY = 2;
 
+/** Return a numeric sort priority for a work item state (lower = more urgent). */
 function statePriority(state: string): number {
   return STATE_SORT_PRIORITY[state] ?? DEFAULT_STATE_PRIORITY;
 }
 
+/** Recursively sort actionable tree nodes by state priority. */
 function sortNodes(nodes: ActionableNode[]): void {
   nodes.sort((a, b) => statePriority(a.workItem.state) - statePriority(b.workItem.state));
   for (const node of nodes) {
@@ -39,6 +41,7 @@ function sortNodes(nodes: ActionableNode[]): void {
   }
 }
 
+/** Count the total number of leaf (childless) items in an actionable tree. */
 function countLeafItems(nodes: ActionableNode[]): number {
   let count = 0;
   for (const node of nodes) {
@@ -51,6 +54,7 @@ function countLeafItems(nodes: ActionableNode[]): number {
   return count;
 }
 
+/** Group actionable work items by their parent ID. */
 function groupActionableByParent(
   workItems: WorkItem[],
   actionableSet: Set<number>,
@@ -66,6 +70,7 @@ function groupActionableByParent(
   return childrenByParent;
 }
 
+/** Build a hierarchical tree of actionable work items from flat board data. */
 function buildActionableTree(boardData?: BoardData): ActionableNode[] {
   if (!boardData) {
     return [];

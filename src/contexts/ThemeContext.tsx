@@ -18,10 +18,12 @@ const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export { ThemeContext };
 
+/** Detect the OS-level color scheme preference. */
 function getSystemTheme(): ResolvedTheme {
   return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
 }
 
+/** Resolve a theme preference to an actual light/dark value. */
 function resolveTheme(preference: ThemePreference): ResolvedTheme {
   if (preference === "system") {
     return getSystemTheme();
@@ -29,6 +31,7 @@ function resolveTheme(preference: ThemePreference): ResolvedTheme {
   return preference;
 }
 
+/** Load the persisted theme preference from localStorage, defaulting to "system". */
 function loadPreference(): ThemePreference {
   const stored = localStorage.getItem(STORAGE_KEY);
   if (stored === "light" || stored === "dark" || stored === "system") {
@@ -37,6 +40,7 @@ function loadPreference(): ThemePreference {
   return "system";
 }
 
+/** Apply the resolved theme by toggling the "dark" class on the document root. */
 function applyTheme(resolved: ResolvedTheme) {
   if (resolved === "dark") {
     document.documentElement.classList.add("dark");

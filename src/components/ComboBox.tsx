@@ -68,6 +68,7 @@ function ChevronButton({
   );
 }
 
+/** Hook that calls a callback when a click occurs outside the referenced container. */
 function useClickOutside(
   containerRef: React.RefObject<HTMLDivElement | null>,
   onClickOutside: () => void,

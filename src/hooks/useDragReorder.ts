@@ -9,7 +9,7 @@ const GHOST_NODE_ID = "__drag-ghost__";
 const WORK_ITEM_NODE_PREFIX = "wi-";
 const GROUP_NODE_PREFIX = "group-";
 
-interface SiblingInfo {
+export interface SiblingInfo {
   id: string;
   origY: number;
   height: number;
@@ -43,17 +43,19 @@ interface FinalizeNodeOptions {
 
 // --- Pure helpers ---
 
-function extractWorkItemId(nodeId: string): number | undefined {
+export function extractWorkItemId(nodeId: string): number | undefined {
   if (nodeId.startsWith(WORK_ITEM_NODE_PREFIX)) {
-    return Number(nodeId.slice(WORK_ITEM_NODE_PREFIX.length));
+    const rawId = nodeId.slice(WORK_ITEM_NODE_PREFIX.length);
+    return rawId === "" ? Number.NaN : Number(rawId);
   }
   if (nodeId.startsWith(GROUP_NODE_PREFIX)) {
-    return Number(nodeId.slice(GROUP_NODE_PREFIX.length));
+    const rawId = nodeId.slice(GROUP_NODE_PREFIX.length);
+    return rawId === "" ? Number.NaN : Number(rawId);
   }
   return undefined;
 }
 
-function collectSuccessorChain(
+export function collectSuccessorChain(
   startId: number,
   workItemMap: Map<number, WorkItem>,
   nodeMap: Map<string, Node>,
@@ -88,6 +90,7 @@ function collectSuccessorChain(
   return result;
 }
 
+/** Check whether the dragged work item has a predecessor in the same visual column. */
 function hasPredecessorInColumn(
   workItem: WorkItem,
   dragX: number,
@@ -115,7 +118,7 @@ function hasPredecessorInColumn(
 }
 
 /** Build the initial drag state from current nodes and the dragged node */
-function buildDragStartState(
+export function buildDragStartState(
   prev: Node[],
   draggedNode: Node,
   wiMapRef: React.RefObject<Map<number, WorkItem>>,
@@ -180,6 +183,7 @@ function buildDragStartState(
   };
 }
 
+/** Build a sorted list of sibling nodes in the same column as the dragged node. */
 function buildSiblingList(
   prev: Node[],
   draggedNode: Node,
@@ -209,6 +213,7 @@ function buildSiblingList(
   return siblings;
 }
 
+/** Find the X position of the column containing the most nodes near the dragged node. */
 function findTargetColumnX(
   prev: Node[],
   draggedNode: Node,
@@ -244,7 +249,7 @@ function findTargetColumnX(
 }
 
 /** Compute insert index for dragged node among siblings */
-function computeInsertIndex(state: DragState, draggedNode: Node): number {
+export function computeInsertIndex(state: DragState, draggedNode: Node): number {
   const currentPositions = state.lastSlotPositions;
   const dragTop = draggedNode.position.y;
   const dragBottom = dragTop + state.draggedHeight;
@@ -294,7 +299,7 @@ function computeInsertIndex(state: DragState, draggedNode: Node): number {
 }
 
 /** Build slot Y positions for siblings given an insert index */
-function buildSlotPositions(
+export function buildSlotPositions(
   state: DragState,
   insertIdx: number,
 ): { slotPositions: Map<string, number>; ghostY: number } {
@@ -318,6 +323,7 @@ function buildSlotPositions(
 }
 
 /** Apply drag frame updates to a single node */
+/** Apply per-frame position updates to a single node during an active drag. */
 function applyDragFrame(
   node: Node,
   state: DragState,
@@ -371,7 +377,7 @@ function finalizeNodePosition<T extends Node>(node: T, options: FinalizeNodeOpti
 
 // --- Callback helpers ---
 
-function buildDragStartNodes(prev: Node[], state: DragState, draggedNode: Node): Node[] {
+export function buildDragStartNodes(prev: Node[], state: DragState, draggedNode: Node): Node[] {
   const ghostNode = {
     id: GHOST_NODE_ID,
     type: "dragGhost",
@@ -395,6 +401,7 @@ function buildDragStartNodes(prev: Node[], state: DragState, draggedNode: Node):
   ];
 }
 
+/** Compute the insert index, slot positions, ghost Y, and X delta for the current drag frame. */
 function computeDragFrameState(
   state: DragState,
   draggedNode: Node,
@@ -423,7 +430,11 @@ function computeDragFrameState(
   return { slotPositions, ghostY, deltaX };
 }
 
-function buildDragStopNodes(prev: Node[], state: DragState | null, draggedNode: Node): Node[] {
+export function buildDragStopNodes(
+  prev: Node[],
+  state: DragState | null,
+  draggedNode: Node,
+): Node[] {
   if (!state) {
     return prev
       .filter((node) => node.id !== GHOST_NODE_ID)

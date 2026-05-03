@@ -64,4 +64,17 @@ export default tseslint.config(
       "max-lines-per-function": ["warn", { max: 75, skipBlankLines: true, skipComments: true }],
     },
   },
+  {
+    files: ["**/*.tsx"],
+    rules: {
+      "max-lines-per-function": "off",
+    },
+  },
+  {
+    files: ["**/*.test.ts", "**/*.test.tsx"],
+    rules: {
+      "@typescript-eslint/no-magic-numbers": "off",
+      "max-lines-per-function": "off",
+    },
+  },
 );

@@ -4,6 +4,7 @@ import type { BoardData, RequiredSome, WorkItem } from "../types";
 
 type ExpandedParentsResult = [Set<number>, (id: number) => void];
 
+/** Manage the set of expanded parent work items, auto-expanding parents when board data loads. */
 export function useExpandedParents(boardData: BoardData | undefined): ExpandedParentsResult {
   const [expandedParents, setExpandedParents] = useState<Set<number>>(() => new Set());
 

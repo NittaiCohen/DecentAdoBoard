@@ -47,6 +47,7 @@ function ErrorScreen({ error, onBack }: { error: unknown; onBack: () => void }) 
   );
 }
 
+/** Hook that restores a previous session by re-sending saved PAT and config to the backend. */
 function useRestoreSession(setStep: (step: AppStep) => void) {
   const [restoring, setRestoring] = useState(true);
 

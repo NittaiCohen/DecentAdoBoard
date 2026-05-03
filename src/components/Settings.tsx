@@ -43,6 +43,7 @@ function OrgSelector({
   );
 }
 
+/** Hook managing PAT auto-generation flow via Azure CLI, including multi-org selection. */
 function usePatGeneration(setPat: (pat: string) => void) {
   const [generating, setGenerating] = useState(false);
   const [genResult, setGenResult] = useState("");

@@ -21,6 +21,7 @@ interface SavedConfig {
   areaPath: string;
 }
 
+/** Type guard to check if a value is a valid SavedConfig. */
 function isSavedConfig(value: unknown): value is SavedConfig {
   return (
     isObject(value) &&
@@ -33,6 +34,7 @@ function isSavedConfig(value: unknown): value is SavedConfig {
   );
 }
 
+/** Load the saved project config from localStorage, returning empty strings as defaults. */
 function loadSavedConfig(): SavedConfig {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
@@ -48,10 +50,12 @@ function loadSavedConfig(): SavedConfig {
   return { organization: "", project: "", areaPath: "" };
 }
 
+/** Persist the project config to localStorage. */
 function saveConfig(config: SavedConfig) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 }
 
+/** Hook that fetches the list of accessible Azure DevOps organizations on mount. */
 function useOrgOptions() {
   const [orgOptions, setOrgOptions] = useState<string[]>([]);
   const [orgLoading, setOrgLoading] = useState(false);
@@ -68,6 +72,7 @@ function useOrgOptions() {
   return { orgOptions, orgLoading, error };
 }
 
+/** Hook that fetches projects for the selected organization. */
 function useProjectOptions(organization: string) {
   const [projectOptions, setProjectOptions] = useState<string[]>([]);
   const [projectLoading, setProjectLoading] = useState(false);
@@ -90,6 +95,7 @@ function useProjectOptions(organization: string) {
   return { projectOptions, projectLoading };
 }
 
+/** Hook that fetches area paths for the selected organization and project. */
 function useAreaOptions(organization: string, project: string) {
   const [areaOptions, setAreaOptions] = useState<string[]>([]);
   const [areaLoading, setAreaLoading] = useState(false);
@@ -175,6 +181,7 @@ function ProjectFormFields({
   );
 }
 
+/** Hook managing the full project selection form state, options loading, and submission. */
 function useProjectForm(onConfigured: () => void) {
   const [saved] = useState(loadSavedConfig);
   const [organization, setOrganization] = useState(
