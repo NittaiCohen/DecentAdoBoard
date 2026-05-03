@@ -154,8 +154,138 @@ function collectDescendantIterPaths(
   return paths;
 }
 
+interface GroupChildPlacement {
+  item: WorkItem;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+interface GroupLayout {
+  width: number;
+  height: number;
+  placements: GroupChildPlacement[];
+}
+
 /**
- * Measure the height a work item will occupy inside a group.
+ * Compute multi-column layout for children inside an expanded group.
+ * Uses dependency depths to arrange children in columns left-to-right,
+ * aligning successors with their predecessors vertically.
+ */
+function computeGroupLayout(
+  childItems: WorkItem[],
+  workItemMap: Map<number, WorkItem>,
+  expandedParents: Set<number>,
+  doneStates: Set<string>,
+): GroupLayout {
+  if (childItems.length === 0) {
+    return {
+      width: CHILD_WIDTH + GROUP_PADDING * 2,
+      height: HEADER_HEIGHT + GROUP_PADDING * 2,
+      placements: [],
+    };
+  }
+
+  const { depths, maxDepth } = computeDependencyDepths(childItems, workItemMap);
+
+  const columns = new Map<number, WorkItem[]>();
+  const childSizes = new Map<number, { width: number; height: number }>();
+
+  for (const child of childItems) {
+    const depth = depths.get(child.id) ?? 0;
+    const col = columns.get(depth);
+    if (col) {
+      col.push(child);
+    } else {
+      columns.set(depth, [child]);
+    }
+    childSizes.set(child.id, measureChildHeight(child, workItemMap, expandedParents, doneStates));
+  }
+
+  const columnWidths = computeColumnWidths(columns, childSizes, maxDepth);
+  const columnXOffsets = computeColumnXOffsets(columnWidths, maxDepth);
+  const placements = placeChildrenInColumns(columns, childSizes, columnXOffsets, maxDepth);
+
+  let maxBottom = HEADER_HEIGHT + GROUP_PADDING;
+  for (const p of placements) {
+    maxBottom = Math.max(maxBottom, p.y + p.height);
+  }
+
+  const lastColEnd = columnXOffsets[maxDepth] + columnWidths[maxDepth];
+  return {
+    width: lastColEnd + GROUP_PADDING,
+    height: maxBottom + GROUP_PADDING,
+    placements,
+  };
+}
+
+/** Compute the maximum child width per depth column. */
+function computeColumnWidths(
+  columns: Map<number, WorkItem[]>,
+  childSizes: Map<number, { width: number; height: number }>,
+  maxDepth: number,
+): number[] {
+  const widths: number[] = [];
+  for (let d = 0; d <= maxDepth; d++) {
+    const col = columns.get(d) ?? [];
+    let maxW = CHILD_WIDTH;
+    for (const child of col) {
+      maxW = Math.max(maxW, childSizes.get(child.id)?.width ?? CHILD_WIDTH);
+    }
+    widths.push(maxW);
+  }
+  return widths;
+}
+
+/** Compute cumulative X offsets for each depth column. */
+function computeColumnXOffsets(columnWidths: number[], maxDepth: number): number[] {
+  const offsets: number[] = [GROUP_PADDING];
+  for (let d = 1; d <= maxDepth; d++) {
+    offsets.push(offsets[d - 1] + columnWidths[d - 1] + NODE_GAP_X);
+  }
+  return offsets;
+}
+
+/**
+ * Place children into columns with predecessor Y alignment.
+ * Processes columns left-to-right so predecessors are positioned before successors.
+ */
+function placeChildrenInColumns(
+  columns: Map<number, WorkItem[]>,
+  childSizes: Map<number, { width: number; height: number }>,
+  columnXOffsets: number[],
+  maxDepth: number,
+): GroupChildPlacement[] {
+  const placements: GroupChildPlacement[] = [];
+  const childYPositions = new Map<number, number>();
+  const subColCurrentY = new Map<string, number>();
+
+  for (let d = 0; d <= maxDepth; d++) {
+    const col = columns.get(d) ?? [];
+    for (const child of col) {
+      const size = childSizes.get(child.id) ?? { width: CHILD_WIDTH, height: NODE_HEIGHT };
+      const subColKey = String(d);
+      const y = computeChildY(child, d, childYPositions, subColCurrentY, subColKey);
+
+      placements.push({
+        item: child,
+        x: columnXOffsets[d],
+        y,
+        width: size.width,
+        height: size.height,
+      });
+      childYPositions.set(child.id, y);
+      subColCurrentY.set(subColKey, y + size.height + NODE_GAP_Y);
+    }
+  }
+
+  return placements;
+}
+
+/**
+ * Measure the height and width a work item will occupy inside a group.
+ * For expanded parents, computes multi-column layout dimensions.
  */
 function measureChildHeight(
   workItem: WorkItem,
@@ -174,18 +304,8 @@ function measureChildHeight(
     .map((childId) => workItemMap.get(childId))
     .filter((childWorkItem): childWorkItem is WorkItem => childWorkItem !== undefined);
 
-  let innerHeight = 0;
-  let innerMaxWidth = CHILD_WIDTH;
-  for (const child of childItems) {
-    const m = measureChildHeight(child, workItemMap, expandedParents, doneStates);
-    innerHeight += m.height + NODE_GAP_Y;
-    innerMaxWidth = Math.max(innerMaxWidth, m.width);
-  }
-  innerHeight -= NODE_GAP_Y;
-
-  const groupWidth = innerMaxWidth + GROUP_PADDING * 2;
-  const groupHeight = HEADER_HEIGHT + GROUP_PADDING * 2 + innerHeight;
-  return { height: groupHeight, width: groupWidth };
+  const layout = computeGroupLayout(childItems, workItemMap, expandedParents, doneStates);
+  return { height: layout.height, width: layout.width };
 }
 
 interface RenderContext {
@@ -205,16 +325,20 @@ function countDoneChildren(workItem: WorkItem, ctx: RenderContext): number {
   }).length;
 }
 
-/** Render child work item nodes inside a single-column expanded group, returning the final Y cursor. */
-function renderChildNodes(childItems: WorkItem[], groupId: string, ctx: RenderContext): number {
-  let childY = HEADER_HEIGHT + GROUP_PADDING;
-  for (const child of childItems) {
+/** Measure the dimensions of an expanded group using multi-column child layout. */
+function measureGroupDimensions(childItems: WorkItem[], ctx: RenderContext): GroupLayout {
+  return computeGroupLayout(childItems, ctx.workItemMap, ctx.expandedParents, ctx.doneStates);
+}
+
+/** Render child work item nodes inside an expanded group using pre-computed placements. */
+function renderChildNodes(layout: GroupLayout, groupId: string, ctx: RenderContext): void {
+  for (const placement of layout.placements) {
+    const child = placement.item;
     const childIsParent = child.children.length > 0;
     const childIsExpanded = ctx.expandedParents.has(child.id);
 
     if (childIsParent && childIsExpanded) {
-      const dims = renderExpandedGroup(child, GROUP_PADDING, childY, groupId, ctx);
-      childY += dims.height + NODE_GAP_Y;
+      renderExpandedGroup(child, placement.x, placement.y, groupId, ctx);
     } else {
       const childDoneCount = countDoneChildren(child, ctx);
       const childNodeId = `wi-${child.id}`;
@@ -222,7 +346,7 @@ function renderChildNodes(childItems: WorkItem[], groupId: string, ctx: RenderCo
       ctx.nodes.push({
         id: childNodeId,
         type: "workItem",
-        position: { x: GROUP_PADDING, y: childY },
+        position: { x: placement.x, y: placement.y },
         parentId: groupId,
         extent: "parent",
         data: {
@@ -235,34 +359,9 @@ function renderChildNodes(childItems: WorkItem[], groupId: string, ctx: RenderCo
         },
         draggable: true,
       });
-      childY += NODE_HEIGHT + NODE_GAP_Y;
     }
   }
-  return childY;
 }
-
-/**
- * Recursively render an expanded parent group (single-column).
- */
-function measureGroupDimensions(
-  childItems: WorkItem[],
-  ctx: RenderContext,
-): { width: number; height: number } {
-  let childAreaHeight = 0;
-  let childMaxWidth = CHILD_WIDTH;
-  for (const child of childItems) {
-    const m = measureChildHeight(child, ctx.workItemMap, ctx.expandedParents, ctx.doneStates);
-    childAreaHeight += m.height + NODE_GAP_Y;
-    childMaxWidth = Math.max(childMaxWidth, m.width);
-  }
-  childAreaHeight -= NODE_GAP_Y;
-  return {
-    width: childMaxWidth + GROUP_PADDING * 2,
-    height: HEADER_HEIGHT + GROUP_PADDING * 2 + childAreaHeight,
-  };
-}
-
-/** Recursively render an expanded parent group (single-column) and return its dimensions. */
 function renderExpandedGroup(
   workItem: WorkItem,
   x: number,
@@ -275,7 +374,7 @@ function renderExpandedGroup(
     .map((childId) => ctx.workItemMap.get(childId))
     .filter((childWorkItem): childWorkItem is WorkItem => childWorkItem !== undefined);
 
-  const { width: groupWidth, height: groupHeight } = measureGroupDimensions(childItems, ctx);
+  const layout = measureGroupDimensions(childItems, ctx);
   const doneChildCount = countDoneChildren(workItem, ctx);
 
   const groupId = `group-${workItem.id}`;
@@ -292,12 +391,12 @@ function renderExpandedGroup(
       state: workItem.state,
       childCount: workItem.children.length,
       doneChildCount,
-      width: groupWidth,
-      height: groupHeight,
+      width: layout.width,
+      height: layout.height,
       onToggleExpand: undefined,
     },
     draggable: !MULTI_SPRINT_TYPES.has(workItem.work_item_type),
-    style: { width: groupWidth, height: groupHeight },
+    style: { width: layout.width, height: layout.height },
   };
   if (reactFlowParentId) {
     node.parentId = reactFlowParentId;
@@ -307,9 +406,9 @@ function renderExpandedGroup(
   }
   ctx.nodes.push(node);
 
-  renderChildNodes(childItems, groupId, ctx);
+  renderChildNodes(layout, groupId, ctx);
 
-  return { width: groupWidth, height: groupHeight };
+  return { width: layout.width, height: layout.height };
 }
 
 /**

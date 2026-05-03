@@ -515,3 +515,204 @@ describe("buildGraphLayout edge cases", () => {
     expect(result.nodes.find((node) => node.id === "wi-1")).toBeTruthy();
   });
 });
+
+describe("expanded parent multi-column layout", () => {
+  it("lays out children with dependencies in separate columns", () => {
+    /*
+     *  ┌─── PBI 1 (expanded) ───┐
+     *  │  [2] ──→ [3]           │
+     *  └────────────────────────┘
+     *  col 0      col 1
+     */
+    const parent = generateWorkItem({
+      id: 1,
+      children: [2, 3],
+      work_item_type: "Product Backlog Item",
+    });
+    const child1 = generateWorkItem({ id: 2, parent_id: 1, successors: [3] });
+    const child2 = generateWorkItem({ id: 3, parent_id: 1, predecessors: [2] });
+
+    const result = buildGraphLayout(board([parent, child1, child2]), new Set([1]));
+
+    const node2 = result.nodes.find((n) => n.id === "wi-2");
+    const node3 = result.nodes.find((n) => n.id === "wi-3");
+    expect(node2).toBeDefined();
+    expect(node3).toBeDefined();
+    if (!node2 || !node3) {
+      throw new Error("child nodes not found");
+    }
+
+    expect(node3.position.x).toBeGreaterThan(node2.position.x);
+  });
+
+  it("keeps children without dependencies in a single column", () => {
+    /*
+     *  ┌─── PBI 1 (expanded) ───┐
+     *  │  [2]                    │
+     *  │  [3]                    │
+     *  └────────────────────────┘
+     *  col 0 (single column, stacked vertically)
+     */
+    const parent = generateWorkItem({
+      id: 1,
+      children: [2, 3],
+      work_item_type: "Product Backlog Item",
+    });
+    const child1 = generateWorkItem({ id: 2, parent_id: 1 });
+    const child2 = generateWorkItem({ id: 3, parent_id: 1 });
+
+    const result = buildGraphLayout(board([parent, child1, child2]), new Set([1]));
+
+    const node2 = result.nodes.find((n) => n.id === "wi-2");
+    const node3 = result.nodes.find((n) => n.id === "wi-3");
+    expect(node2).toBeDefined();
+    expect(node3).toBeDefined();
+    if (!node2 || !node3) {
+      throw new Error("child nodes not found");
+    }
+
+    expect(node2.position.x).toBe(node3.position.x);
+    expect(node3.position.y).toBeGreaterThan(node2.position.y);
+  });
+
+  it("aligns a successor Y with its predecessor Y", () => {
+    /*
+     *  ┌─── PBI 1 (expanded) ─────────┐
+     *  │  [2]                          │
+     *  │  [3] ──→ [4]   ← same Y row  │
+     *  └──────────────────────────────┘
+     *  col 0      col 1
+     */
+    const parent = generateWorkItem({
+      id: 1,
+      children: [2, 3, 4],
+      work_item_type: "Product Backlog Item",
+    });
+    const child1 = generateWorkItem({ id: 2, parent_id: 1 });
+    const child2 = generateWorkItem({ id: 3, parent_id: 1, successors: [4] });
+    const child3 = generateWorkItem({ id: 4, parent_id: 1, predecessors: [3] });
+
+    const result = buildGraphLayout(board([parent, child1, child2, child3]), new Set([1]));
+
+    const node3 = result.nodes.find((n) => n.id === "wi-3");
+    const node4 = result.nodes.find((n) => n.id === "wi-4");
+    expect(node3).toBeDefined();
+    expect(node4).toBeDefined();
+    if (!node3 || !node4) {
+      throw new Error("child nodes not found");
+    }
+
+    expect(node4.position.y).toBe(node3.position.y);
+  });
+
+  it("widens the parent group for multi-column children", () => {
+    /*
+     *  Single-column (no deps):      Multi-column (with deps):
+     *  ┌── PBI 10 ──┐               ┌───── PBI 1 ─────────┐
+     *  │  [11]       │               │  [2] ──→ [3]        │
+     *  │  [12]       │               └─────────────────────┘
+     *  └────────────┘                wider due to 2 columns
+     */
+    const parent = generateWorkItem({
+      id: 1,
+      children: [2, 3],
+      work_item_type: "Product Backlog Item",
+    });
+    const child1 = generateWorkItem({ id: 2, parent_id: 1, successors: [3] });
+    const child2 = generateWorkItem({ id: 3, parent_id: 1, predecessors: [2] });
+
+    const singleCol = buildGraphLayout(
+      board([
+        generateWorkItem({ id: 10, children: [11, 12], work_item_type: "Product Backlog Item" }),
+        generateWorkItem({ id: 11, parent_id: 10 }),
+        generateWorkItem({ id: 12, parent_id: 10 }),
+      ]),
+      new Set([10]),
+    );
+    const multiCol = buildGraphLayout(board([parent, child1, child2]), new Set([1]));
+
+    const singleGroup = singleCol.nodes.find((n) => n.id === "group-10");
+    const multiGroup = multiCol.nodes.find((n) => n.id === "group-1");
+    expect(singleGroup).toBeDefined();
+    expect(multiGroup).toBeDefined();
+    if (!singleGroup || !multiGroup) {
+      throw new Error("group nodes not found");
+    }
+
+    const singleWidth = Number(singleGroup.style?.width);
+    const multiWidth = Number(multiGroup.style?.width);
+    expect(singleWidth).toBeGreaterThan(0);
+    expect(multiWidth).toBeGreaterThan(singleWidth);
+  });
+
+  it("handles a three-node chain across three columns", () => {
+    /*
+     *  ┌─── PBI 1 (expanded) ──────────────────┐
+     *  │  [2] ──→ [3] ──→ [4]                  │
+     *  └───────────────────────────────────────┘
+     *  col 0      col 1      col 2
+     */
+    const parent = generateWorkItem({
+      id: 1,
+      children: [2, 3, 4],
+      work_item_type: "Product Backlog Item",
+    });
+    const a = generateWorkItem({ id: 2, parent_id: 1, successors: [3] });
+    const b = generateWorkItem({ id: 3, parent_id: 1, predecessors: [2], successors: [4] });
+    const c = generateWorkItem({ id: 4, parent_id: 1, predecessors: [3] });
+
+    const result = buildGraphLayout(board([parent, a, b, c]), new Set([1]));
+
+    const nodeA = result.nodes.find((n) => n.id === "wi-2");
+    const nodeB = result.nodes.find((n) => n.id === "wi-3");
+    const nodeC = result.nodes.find((n) => n.id === "wi-4");
+    expect(nodeA).toBeDefined();
+    expect(nodeB).toBeDefined();
+    expect(nodeC).toBeDefined();
+    if (!nodeA || !nodeB || !nodeC) {
+      throw new Error("chain nodes not found");
+    }
+
+    expect(nodeB.position.x).toBeGreaterThan(nodeA.position.x);
+    expect(nodeC.position.x).toBeGreaterThan(nodeB.position.x);
+  });
+
+  it("lays out grandchildren in columns inside a nested expanded group", () => {
+    /*
+     *  ┌─── PBI 1 (expanded) ──────────────────────┐
+     *  │  ┌─── PBI 2 (expanded) ───┐               │
+     *  │  │  [3] ──→ [4]           │               │
+     *  │  └────────────────────────┘               │
+     *  └──────────────────────────────────────────┘
+     *  Grandchildren 3 & 4 laid out in columns inside nested group
+     */
+    const grandparent = generateWorkItem({
+      id: 1,
+      children: [2],
+      work_item_type: "Product Backlog Item",
+    });
+    const parent = generateWorkItem({
+      id: 2,
+      parent_id: 1,
+      children: [3, 4],
+      work_item_type: "Product Backlog Item",
+    });
+    const grandchild1 = generateWorkItem({ id: 3, parent_id: 2, successors: [4] });
+    const grandchild2 = generateWorkItem({ id: 4, parent_id: 2, predecessors: [3] });
+
+    const result = buildGraphLayout(
+      board([grandparent, parent, grandchild1, grandchild2]),
+      new Set([1, 2]),
+    );
+
+    const gc1 = result.nodes.find((n) => n.id === "wi-3");
+    const gc2 = result.nodes.find((n) => n.id === "wi-4");
+    expect(gc1).toBeDefined();
+    expect(gc2).toBeDefined();
+    if (!gc1 || !gc2) {
+      throw new Error("grandchild nodes not found");
+    }
+
+    expect(gc2.position.x).toBeGreaterThan(gc1.position.x);
+  });
+});
