@@ -161,15 +161,24 @@ export function buildDragStartState(
     siblingById.set(s.id, s);
   }
 
+  // Remove same-column successors from the horizontal-chain set;
+  // they'll be handled as siblings for vertical slot logic instead.
+  for (const siblingId of siblingById.keys()) {
+    successorIds.delete(siblingId);
+    successorOriginalX.delete(siblingId);
+  }
+
   const allYs = [draggedNode.position.y, ...siblings.map((s) => s.origY)];
   const baseY = Math.min(...allYs);
+
+  const columnX = findTargetColumnX(prev, draggedNode, dragX, dragParent);
 
   return {
     draggedId: draggedNode.id,
     draggedParent: dragParent,
     draggedOrigX: dragX,
     draggedOrigY: draggedNode.position.y,
-    columnX: findTargetColumnX(prev, draggedNode, dragX, dragParent),
+    columnX,
     draggedHeight: dragHeight,
     draggedWidth: dragWidth,
     siblings,
@@ -213,7 +222,7 @@ function buildSiblingList(
   return siblings;
 }
 
-/** Find the X position of the column containing the most nodes near the dragged node. */
+/** Find the X position of the column containing the dragged node. */
 function findTargetColumnX(
   prev: Node[],
   draggedNode: Node,
@@ -242,10 +251,15 @@ function findTargetColumnX(
       columns.push({ x: candidate.x, count: 1 });
     }
   }
-  const largestColumn = columns.reduce((largest, col) =>
-    col.count > largest.count ? col : largest,
-  );
-  return largestColumn.x;
+
+  // Prefer the column that contains the dragged node's X position
+  const dragColumn = columns.find((col) => Math.abs(col.x - dragX) < columnThreshold);
+  if (dragColumn) {
+    return dragColumn.x;
+  }
+
+  // No column contains the dragged node — use dragX so siblings filter correctly
+  return dragX;
 }
 
 /** Compute insert index for dragged node among siblings */
@@ -338,15 +352,16 @@ function applyDragFrame(
   if (node.id === state.draggedId) {
     return node;
   }
-  const successorOrigX = state.successorOriginalX.get(node.id);
-  if (!isNil(successorOrigX) && deltaX !== 0) {
-    return { ...node, position: { x: successorOrigX + deltaX, y: node.position.y } };
-  }
+  // Siblings take priority: same-column successors should reorder vertically, not shift horizontally
   const siblingInfo = state.siblingById.get(node.id);
   if (siblingInfo) {
     const slotY = slotPositions.get(node.id);
     const targetY = slotY ?? siblingInfo.origY;
     return { ...node, position: { x: node.position.x, y: targetY } };
+  }
+  const successorOrigX = state.successorOriginalX.get(node.id);
+  if (!isNil(successorOrigX) && deltaX !== 0) {
+    return { ...node, position: { x: successorOrigX + deltaX, y: node.position.y } };
   }
   return node;
 }
@@ -358,6 +373,14 @@ function finalizeNodePosition<T extends Node>(node: T, options: FinalizeNodeOpti
   if (node.id === state.draggedId) {
     return { ...node, position: { x: finalX, y: ghostY }, className: undefined };
   }
+  // Siblings take priority: same-column successors should reorder vertically, not shift horizontally
+  const siblingInfo = state.siblingById.get(node.id);
+  if (siblingInfo) {
+    const slotY = slotPositions.get(node.id);
+    const targetY = slotY ?? siblingInfo.origY;
+    return { ...node, position: { x: node.position.x, y: targetY }, className: undefined };
+  }
+
   const successorOrigX = state.successorOriginalX.get(node.id);
   if (!isNil(successorOrigX) && deltaX !== 0) {
     return {
@@ -366,12 +389,7 @@ function finalizeNodePosition<T extends Node>(node: T, options: FinalizeNodeOpti
       className: undefined,
     };
   }
-  const siblingInfo = state.siblingById.get(node.id);
-  if (siblingInfo) {
-    const slotY = slotPositions.get(node.id);
-    const targetY = slotY ?? siblingInfo.origY;
-    return { ...node, position: { x: node.position.x, y: targetY }, className: undefined };
-  }
+
   return node.className ? { ...node, className: undefined } : node;
 }
 
