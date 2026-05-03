@@ -1,1 +1,9 @@
 npx lint-staged
+
+npx vitest run &
+pid_vitest=$!
+cargo test --manifest-path src-tauri/Cargo.toml &
+pid_cargo=$!
+
+wait $pid_vitest || exit 1
+wait $pid_cargo || exit 1
