@@ -1,5 +1,5 @@
 import { memo } from "react";
-import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
+import { Handle, Position, useStore, type NodeProps, type Node } from "@xyflow/react";
 
 export interface ParentGroupData extends Record<string, unknown> {
   label: string;
@@ -26,8 +26,24 @@ const TYPE_COLORS: Record<string, string> = {
 
 const DEFAULT_COLORS = "border-l-gray-500 bg-gray-100/30 dark:bg-gray-800/30";
 
-function ParentGroupComponent({ data }: NodeProps<ParentGroupNode>) {
+/** Minimum header width that must remain visible when offset is applied. */
+const MIN_VISIBLE_HEADER_WIDTH = 200;
+
+/** Selects viewport transform from the React Flow store. */
+const viewportSelector = (s: { transform: [number, number, number] }) => s.transform;
+
+function ParentGroupComponent({ data, positionAbsoluteX }: NodeProps<ParentGroupNode>) {
   const colorClass = TYPE_COLORS[data.workItemType] ?? DEFAULT_COLORS;
+
+  const [viewX, , zoom] = useStore(viewportSelector);
+
+  // Compute how far the header should offset to stay visible.
+  // viewportLeft is the x coordinate of the left edge of the viewport in flow-space.
+  const viewportLeft = -viewX / zoom;
+  // Clamp offset so header stays between 0 and (width - minVisibleWidth)
+  const maxOffset = Math.max(0, data.width - MIN_VISIBLE_HEADER_WIDTH);
+  const rawOffset = viewportLeft - positionAbsoluteX;
+  const headerOffset = Math.max(0, Math.min(maxOffset, rawOffset));
 
   return (
     <div
@@ -45,7 +61,15 @@ function ParentGroupComponent({ data }: NodeProps<ParentGroupNode>) {
         className="!bg-gray-500 dark:!bg-gray-400 !w-2 !h-2"
       />
 
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-300/50 dark:border-gray-600/50 bg-gray-200/40 dark:bg-gray-700/40 rounded-t-lg">
+      <div
+        className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-300/50 dark:border-gray-600/50 bg-gray-200/40 dark:bg-gray-700/40 rounded-t-lg"
+        style={{
+          position: "relative",
+          left: headerOffset,
+          width: data.width - headerOffset,
+          transition: "left 0.15s ease-out, width 0.15s ease-out",
+        }}
+      >
         <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">{`#${data.workItemId}`}</span>
         <span className="text-[10px] px-1 py-0.5 rounded bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200">
           {data.state}
