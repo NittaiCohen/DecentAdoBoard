@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "DecentAdoBoard",
+        "title": "Decent ADO Board",
         "width": 1280,
         "height": 800
       }
