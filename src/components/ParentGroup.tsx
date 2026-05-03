@@ -16,15 +16,19 @@ export interface ParentGroupData extends Record<string, unknown> {
 export type ParentGroupNode = Node<ParentGroupData, "parentGroup">;
 
 const TYPE_COLORS: Record<string, string> = {
-  Bug: "border-l-red-500 bg-red-100/30 dark:bg-red-950/30",
-  Task: "border-l-yellow-500 bg-yellow-100/30 dark:bg-yellow-950/30",
-  "User Story": "border-l-blue-500 bg-blue-100/30 dark:bg-blue-950/30",
-  Feature: "border-l-purple-500 bg-purple-100/30 dark:bg-purple-950/30",
-  Epic: "border-l-orange-500 bg-orange-100/30 dark:bg-orange-950/30",
-  "Product Backlog Item": "border-l-blue-500 bg-blue-100/30 dark:bg-blue-950/30",
+  Bug: "border-red-400/60 dark:border-red-600/60 border-l-red-500 bg-red-100/30 dark:bg-red-950/30",
+  Task: "border-yellow-400/60 dark:border-yellow-600/60 border-l-yellow-500 bg-yellow-100/30 dark:bg-yellow-950/30",
+  "User Story":
+    "border-blue-400/60 dark:border-blue-600/60 border-l-blue-500 bg-blue-100/30 dark:bg-blue-950/30",
+  Feature:
+    "border-purple-400/60 dark:border-purple-600/60 border-l-purple-500 bg-purple-100/30 dark:bg-purple-950/30",
+  Epic: "border-orange-400/60 dark:border-orange-600/60 border-l-orange-500 bg-orange-100/30 dark:bg-orange-950/30",
+  "Product Backlog Item":
+    "border-blue-400/60 dark:border-blue-600/60 border-l-blue-500 bg-blue-100/30 dark:bg-blue-950/30",
 };
 
-const DEFAULT_COLORS = "border-l-gray-500 bg-gray-100/30 dark:bg-gray-800/30";
+const DEFAULT_COLORS =
+  "border-gray-400/60 dark:border-gray-600/60 border-l-gray-500 bg-gray-100/30 dark:bg-gray-800/30";
 
 /** Minimum header width that must remain visible when offset is applied. */
 const MIN_VISIBLE_HEADER_WIDTH = 200;
@@ -47,7 +51,7 @@ function ParentGroupComponent({ data, positionAbsoluteX }: NodeProps<ParentGroup
 
   return (
     <div
-      className={`rounded-lg border-l-4 border border-gray-300/50 dark:border-gray-600/50 ${colorClass}`}
+      className={`rounded-lg border-l-4 border-2 ${colorClass}`}
       style={{ width: data.width, height: data.height }}
     >
       <Handle
