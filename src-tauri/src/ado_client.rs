@@ -240,11 +240,17 @@ pub async fn fetch_work_items(state: &AppState) -> Result<Vec<WorkItem>, String>
         all_work_items.extend(data.value);
     }
 
-    // Step 3: Convert to frontend types, resolving relations
-    let known_ids: std::collections::HashSet<i64> =
-        all_ids.iter().cloned().collect();
+    let known_ids: std::collections::HashSet<i64> = all_ids.iter().cloned().collect();
+    Ok(convert_ado_work_items(all_work_items, &known_ids))
+}
 
-    let work_items: Vec<WorkItem> = all_work_items
+/// Convert ADO work items to frontend types, resolving relations.
+/// Only includes relations where the linked ID is in the `known_ids` set.
+fn convert_ado_work_items(
+    ado_items: Vec<AdoWorkItem>,
+    known_ids: &std::collections::HashSet<i64>,
+) -> Vec<WorkItem> {
+    ado_items
         .into_iter()
         .map(|item| {
             let mut predecessors = Vec::new();
@@ -300,9 +306,7 @@ pub async fn fetch_work_items(state: &AppState) -> Result<Vec<WorkItem>, String>
                 children,
             }
         })
-        .collect();
-
-    Ok(work_items)
+        .collect()
 }
 
 fn extract_id_from_url(url: &str) -> i64 {
@@ -310,4 +314,412 @@ fn extract_id_from_url(url: &str) -> i64 {
         .next()
         .and_then(|s| s.parse().ok())
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{Duration, Utc};
+    use serde_json::json;
+
+    fn parse_utc(value: &str) -> chrono::DateTime<chrono::Utc> {
+        chrono::DateTime::parse_from_rfc3339(value)
+            .unwrap()
+            .with_timezone(&chrono::Utc)
+    }
+
+    fn iteration(path: &str, start: chrono::DateTime<chrono::Utc>, finish: chrono::DateTime<chrono::Utc>) -> IterationInfo {
+        IterationInfo {
+            path: path.to_string(),
+            name: path.rsplit('\\').next().unwrap().to_string(),
+            start: Some(start),
+            finish: Some(finish),
+        }
+    }
+
+    #[test]
+    fn collect_leaf_iterations_nested_tree() {
+        let tree = json!({
+            "name": "Root",
+            "children": [
+                {
+                    "name": "ChildA",
+                    "children": [
+                        {
+                            "name": "Sprint1",
+                            "attributes": {
+                                "startDate": "2025-01-06T00:00:00Z",
+                                "finishDate": "2025-01-19T00:00:00Z"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "name": "ChildB",
+                    "children": [
+                        {
+                            "name": "Sprint2",
+                            "attributes": {
+                                "startDate": "2025-01-20T00:00:00Z",
+                                "finishDate": "2025-02-02T00:00:00Z"
+                            }
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let mut results = Vec::new();
+        collect_leaf_iterations(&tree, "", &mut results);
+
+        assert_eq!(results.len(), 2);
+        assert_eq!(results[0].path, "Root\\ChildA\\Sprint1");
+        assert_eq!(results[0].name, "Sprint1");
+        assert_eq!(results[0].start, Some(parse_utc("2025-01-06T00:00:00Z")));
+        assert_eq!(results[0].finish, Some(parse_utc("2025-01-19T00:00:00Z")));
+        assert_eq!(results[1].path, "Root\\ChildB\\Sprint2");
+        assert_eq!(results[1].name, "Sprint2");
+    }
+
+    #[test]
+    fn collect_leaf_iterations_leaf_with_dates() {
+        let tree = json!({
+            "name": "Sprint1",
+            "attributes": {
+                "startDate": "2025-01-06T00:00:00Z",
+                "finishDate": "2025-01-19T00:00:00Z"
+            }
+        });
+
+        let mut results = Vec::new();
+        collect_leaf_iterations(&tree, "Root", &mut results);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "Root\\Sprint1");
+        assert_eq!(results[0].name, "Sprint1");
+    }
+
+    #[test]
+    fn collect_leaf_iterations_leaf_without_dates() {
+        let tree = json!({ "name": "Sprint1" });
+
+        let mut results = Vec::new();
+        collect_leaf_iterations(&tree, "Root", &mut results);
+
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn collect_leaf_iterations_non_leaf_node_recurses_only() {
+        let tree = json!({
+            "name": "Root",
+            "attributes": {
+                "startDate": "2025-01-01T00:00:00Z",
+                "finishDate": "2025-01-31T00:00:00Z"
+            },
+            "children": [
+                {
+                    "name": "Child",
+                    "attributes": {
+                        "startDate": "2025-02-01T00:00:00Z",
+                        "finishDate": "2025-02-14T00:00:00Z"
+                    }
+                }
+            ]
+        });
+
+        let mut results = Vec::new();
+        collect_leaf_iterations(&tree, "", &mut results);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "Root\\Child");
+        assert!(results.iter().all(|item| item.path != "Root"));
+    }
+
+    #[test]
+    fn collect_leaf_iterations_empty_tree() {
+        let tree = json!({ "name": "Root", "children": [] });
+
+        let mut results = Vec::new();
+        collect_leaf_iterations(&tree, "", &mut results);
+
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn collect_leaf_iterations_deep_nesting() {
+        let tree = json!({
+            "name": "Root",
+            "children": [
+                {
+                    "name": "Program",
+                    "children": [
+                        {
+                            "name": "Release",
+                            "children": [
+                                {
+                                    "name": "Sprint3",
+                                    "attributes": {
+                                        "startDate": "2025-03-03T00:00:00Z",
+                                        "finishDate": "2025-03-16T00:00:00Z"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        });
+
+        let mut results = Vec::new();
+        collect_leaf_iterations(&tree, "", &mut results);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "Root\\Program\\Release\\Sprint3");
+        assert_eq!(results[0].name, "Sprint3");
+    }
+
+    #[test]
+    fn get_sprint_window_current_in_middle() {
+        let now = Utc::now();
+        let iterations = vec![
+            iteration("Sprint0", now - Duration::days(60), now - Duration::days(50)),
+            iteration("Sprint1", now - Duration::days(40), now - Duration::days(30)),
+            iteration("Sprint2", now - Duration::days(20), now - Duration::days(10)),
+            iteration("Sprint3", now - Duration::days(1), now + Duration::days(1)),
+            iteration("Sprint4", now + Duration::days(10), now + Duration::days(20)),
+            iteration("Sprint5", now + Duration::days(30), now + Duration::days(40)),
+            iteration("Sprint6", now + Duration::days(50), now + Duration::days(60)),
+        ];
+
+        assert_eq!(
+            get_sprint_window(&iterations),
+            vec!["Sprint1", "Sprint2", "Sprint3", "Sprint4", "Sprint5"]
+        );
+    }
+
+    #[test]
+    fn get_sprint_window_current_at_start() {
+        let now = Utc::now();
+        let iterations = vec![
+            iteration("Sprint0", now - Duration::days(5), now + Duration::days(5)),
+            iteration("Sprint1", now + Duration::days(10), now + Duration::days(20)),
+            iteration("Sprint2", now + Duration::days(30), now + Duration::days(40)),
+            iteration("Sprint3", now + Duration::days(50), now + Duration::days(60)),
+        ];
+
+        assert_eq!(
+            get_sprint_window(&iterations),
+            vec!["Sprint0", "Sprint1", "Sprint2"]
+        );
+    }
+
+    #[test]
+    fn get_sprint_window_current_at_end() {
+        let now = Utc::now();
+        let iterations = vec![
+            iteration("Sprint0", now - Duration::days(60), now - Duration::days(50)),
+            iteration("Sprint1", now - Duration::days(40), now - Duration::days(30)),
+            iteration("Sprint2", now - Duration::days(20), now - Duration::days(10)),
+            iteration("Sprint3", now - Duration::days(5), now + Duration::days(5)),
+        ];
+
+        assert_eq!(
+            get_sprint_window(&iterations),
+            vec!["Sprint1", "Sprint2", "Sprint3"]
+        );
+    }
+
+    #[test]
+    fn get_sprint_window_no_current_sprint_all_past() {
+        let now = Utc::now();
+        let iterations = vec![
+            iteration("Sprint0", now - Duration::days(60), now - Duration::days(50)),
+            iteration("Sprint1", now - Duration::days(40), now - Duration::days(30)),
+            iteration("Sprint2", now - Duration::days(20), now - Duration::days(10)),
+            iteration("Sprint3", now - Duration::days(9), now - Duration::days(1)),
+        ];
+
+        assert_eq!(
+            get_sprint_window(&iterations),
+            vec!["Sprint0", "Sprint1", "Sprint2"]
+        );
+    }
+
+    #[test]
+    fn get_sprint_window_fewer_than_window() {
+        let now = Utc::now();
+        let iterations = vec![
+            iteration("Sprint0", now - Duration::days(5), now + Duration::days(5)),
+            iteration("Sprint1", now + Duration::days(10), now + Duration::days(20)),
+        ];
+
+        assert_eq!(get_sprint_window(&iterations), vec!["Sprint0", "Sprint1"]);
+    }
+
+    #[test]
+    fn get_sprint_window_empty_list() {
+        let iterations: Vec<IterationInfo> = Vec::new();
+
+        assert!(get_sprint_window(&iterations).is_empty());
+    }
+
+    #[test]
+    fn get_sprint_window_single_current_iteration() {
+        let now = Utc::now();
+        let iterations = vec![iteration(
+            "Sprint0",
+            now - Duration::days(5),
+            now + Duration::days(5),
+        )];
+
+        assert_eq!(get_sprint_window(&iterations), vec!["Sprint0"]);
+    }
+
+    #[test]
+    fn extract_id_from_url_valid() {
+        assert_eq!(
+            extract_id_from_url("https://dev.azure.com/org/project/_apis/wit/workItems/12345"),
+            12345
+        );
+    }
+
+    #[test]
+    fn extract_id_from_url_empty() {
+        assert_eq!(extract_id_from_url(""), 0);
+    }
+
+    #[test]
+    fn extract_id_from_url_no_number() {
+        assert_eq!(
+            extract_id_from_url("https://dev.azure.com/org/project/_apis/wit/workItems/abc"),
+            0
+        );
+    }
+
+    #[test]
+    fn extract_id_from_url_trailing_slash() {
+        assert_eq!(extract_id_from_url("https://example.com/42/"), 0);
+    }
+
+    // --- convert_ado_work_items tests ---
+
+    fn make_ado_item(id: i64, relations: Option<Vec<AdoRelation>>) -> AdoWorkItem {
+        AdoWorkItem {
+            id,
+            fields: AdoWorkItemFields {
+                title: format!("Item {}", id),
+                state: "Active".to_string(),
+                work_item_type: "Task".to_string(),
+                assigned_to: None,
+                iteration_path: "Project\\Sprint 1".to_string(),
+                area_path: "Project\\Area".to_string(),
+            },
+            relations,
+        }
+    }
+
+    fn rel(rel_type: &str, linked_id: i64) -> AdoRelation {
+        AdoRelation {
+            rel: rel_type.to_string(),
+            url: format!("https://dev.azure.com/org/project/_apis/wit/workItems/{}", linked_id),
+        }
+    }
+
+    #[test]
+    fn convert_maps_dependency_forward_to_successors() {
+        let known: std::collections::HashSet<i64> = [1, 2].into_iter().collect();
+        let items = vec![make_ado_item(1, Some(vec![
+            rel("System.LinkTypes.Dependency-Forward", 2),
+        ]))];
+
+        let result = convert_ado_work_items(items, &known);
+
+        assert_eq!(result[0].successors, vec![2]);
+        assert!(result[0].predecessors.is_empty());
+    }
+
+    #[test]
+    fn convert_maps_dependency_reverse_to_predecessors() {
+        let known: std::collections::HashSet<i64> = [1, 2].into_iter().collect();
+        let items = vec![make_ado_item(2, Some(vec![
+            rel("System.LinkTypes.Dependency-Reverse", 1),
+        ]))];
+
+        let result = convert_ado_work_items(items, &known);
+
+        assert_eq!(result[0].predecessors, vec![1]);
+        assert!(result[0].successors.is_empty());
+    }
+
+    #[test]
+    fn convert_maps_hierarchy_relations() {
+        let known: std::collections::HashSet<i64> = [1, 2, 3].into_iter().collect();
+        let items = vec![make_ado_item(1, Some(vec![
+            rel("System.LinkTypes.Hierarchy-Forward", 2),
+            rel("System.LinkTypes.Hierarchy-Forward", 3),
+        ]))];
+
+        let result = convert_ado_work_items(items, &known);
+
+        assert_eq!(result[0].children, vec![2, 3]);
+        assert!(result[0].parent_id.is_none());
+    }
+
+    #[test]
+    fn convert_maps_hierarchy_reverse_to_parent() {
+        let known: std::collections::HashSet<i64> = [1, 2].into_iter().collect();
+        let items = vec![make_ado_item(2, Some(vec![
+            rel("System.LinkTypes.Hierarchy-Reverse", 1),
+        ]))];
+
+        let result = convert_ado_work_items(items, &known);
+
+        assert_eq!(result[0].parent_id, Some(1));
+    }
+
+    #[test]
+    fn convert_filters_out_of_scope_relations() {
+        // Item 99 is NOT in known_ids, so its relation should be excluded
+        let known: std::collections::HashSet<i64> = [1, 2].into_iter().collect();
+        let items = vec![make_ado_item(1, Some(vec![
+            rel("System.LinkTypes.Dependency-Forward", 2),   // in scope
+            rel("System.LinkTypes.Dependency-Forward", 99),  // out of scope
+            rel("System.LinkTypes.Hierarchy-Forward", 99),   // out of scope
+        ]))];
+
+        let result = convert_ado_work_items(items, &known);
+
+        assert_eq!(result[0].successors, vec![2]);
+        assert!(result[0].children.is_empty());
+    }
+
+    #[test]
+    fn convert_ignores_unknown_relation_types() {
+        let known: std::collections::HashSet<i64> = [1, 2].into_iter().collect();
+        let items = vec![make_ado_item(1, Some(vec![
+            rel("System.LinkTypes.Related", 2),
+        ]))];
+
+        let result = convert_ado_work_items(items, &known);
+
+        assert!(result[0].successors.is_empty());
+        assert!(result[0].predecessors.is_empty());
+        assert!(result[0].children.is_empty());
+        assert!(result[0].parent_id.is_none());
+    }
+
+    #[test]
+    fn convert_handles_no_relations() {
+        let known: std::collections::HashSet<i64> = [1].into_iter().collect();
+        let items = vec![make_ado_item(1, None)];
+
+        let result = convert_ado_work_items(items, &known);
+
+        assert!(result[0].predecessors.is_empty());
+        assert!(result[0].successors.is_empty());
+        assert!(result[0].children.is_empty());
+        assert!(result[0].parent_id.is_none());
+        assert_eq!(result[0].title, "Item 1");
+    }
 }

@@ -100,3 +100,92 @@ impl<'a> std::io::Write for Base64Encoder<'a> {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn base64_empty() {
+        assert_eq!(base64_encode(""), "");
+    }
+
+    #[test]
+    fn base64_f() {
+        assert_eq!(base64_encode("f"), "Zg==");
+    }
+
+    #[test]
+    fn base64_fo() {
+        assert_eq!(base64_encode("fo"), "Zm8=");
+    }
+
+    #[test]
+    fn base64_foo() {
+        assert_eq!(base64_encode("foo"), "Zm9v");
+    }
+
+    #[test]
+    fn base64_foob() {
+        assert_eq!(base64_encode("foob"), "Zm9vYg==");
+    }
+
+    #[test]
+    fn base64_fooba() {
+        assert_eq!(base64_encode("fooba"), "Zm9vYmE=");
+    }
+
+    #[test]
+    fn base64_foobar() {
+        assert_eq!(base64_encode("foobar"), "Zm9vYmFy");
+    }
+
+    #[test]
+    fn base64_colon_prefix() {
+        assert_eq!(base64_encode(":mytoken"), "Om15dG9rZW4=");
+    }
+
+    #[test]
+    fn base64_special_chars() {
+        assert_eq!(base64_encode("hello world!"), "aGVsbG8gd29ybGQh");
+    }
+
+    #[test]
+    fn auth_header_with_pat() {
+        let state = AppState::new();
+        *state.pat.lock().unwrap() = Some("mytoken".to_string());
+        let header = state.get_auth_header().unwrap();
+        // ":mytoken" base64 = "Om15dG9rZW4="
+        assert_eq!(header, "Basic Om15dG9rZW4=");
+    }
+
+    #[test]
+    fn auth_header_without_pat() {
+        let state = AppState::new();
+        let result = state.get_auth_header();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "PAT not configured");
+    }
+
+    #[test]
+    fn get_config_without_config() {
+        let state = AppState::new();
+        let result = state.get_config();
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), "ADO not configured");
+    }
+
+    #[test]
+    fn get_config_with_config() {
+        let state = AppState::new();
+        *state.config.lock().unwrap() = Some(AdoConfig {
+            organization: "myorg".to_string(),
+            project: "myproj".to_string(),
+            area_path: "myarea".to_string(),
+        });
+        let config = state.get_config().unwrap();
+        assert_eq!(config.organization, "myorg");
+        assert_eq!(config.project, "myproj");
+        assert_eq!(config.area_path, "myarea");
+    }
+}
