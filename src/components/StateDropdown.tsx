@@ -20,10 +20,16 @@ export default function StateDropdown({
   currentState,
 }: StateDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const [displayState, setDisplayState] = useState(currentState);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const queryClient = useQueryClient();
+
+  // Stay in sync when boardData refetches with authoritative data
+  useEffect(() => {
+    setDisplayState(currentState);
+  }, [currentState]);
 
   // Read org+project from saved config for cache key scoping
   const config = useMemo(() => getSavedConfig(), []);
@@ -42,8 +48,9 @@ export default function StateDropdown({
 
   const mutation = useMutation({
     mutationFn: (newState: string) => updateWorkItemStateTauri(workItemId, newState),
-    onSuccess: () => {
+    onSuccess: (_data, newState) => {
       setIsOpen(false);
+      setDisplayState(newState);
       void queryClient.invalidateQueries({ queryKey: ["boardData"] });
     },
   });
@@ -109,7 +116,7 @@ export default function StateDropdown({
     };
   }, [isOpen]);
 
-  const stateClass = STATE_BADGES[currentState] ?? DEFAULT_STATE_BADGE;
+  const stateClass = STATE_BADGES[displayState] ?? DEFAULT_STATE_BADGE;
 
   return (
     <span className="relative inline-block nodrag nopan">
@@ -124,10 +131,10 @@ export default function StateDropdown({
           }
         }}
         disabled={mutation.isPending}
-        className={`text-[10px] px-1 py-0.5 rounded cursor-pointer hover:ring-1 hover:ring-gray-400 dark:hover:ring-gray-500 transition-shadow ${stateClass} ${mutation.isPending ? "opacity-50" : ""}`}
+        className={`text-[10px] px-1 py-0.5 rounded cursor-pointer hover:ring-1 hover:ring-gray-400 dark:hover:ring-gray-500 transition-all ${stateClass} ${mutation.isPending ? "opacity-40 cursor-wait" : ""}`}
         title="Click to change state"
       >
-        {mutation.isPending ? "..." : currentState}
+        {displayState}
       </button>
 
       {isOpen &&
@@ -145,7 +152,7 @@ export default function StateDropdown({
             )}
 
             {states?.map((state) => {
-              const isActive = state.name === currentState;
+              const isActive = state.name === displayState;
               const itemStateClass = STATE_BADGES[state.name] ?? DEFAULT_STATE_BADGE;
 
               return (
