@@ -4,6 +4,20 @@ use crate::state::AppState;
 const WORK_ITEM_BATCH_SIZE: usize = 200;
 const SPRINT_WINDOW: usize = 2; // sprints before and after current
 
+/// Check an HTTP response for non-success status and return a descriptive error.
+/// On success, returns the response unchanged for further processing.
+pub(crate) async fn check_response(
+    resp: reqwest::Response,
+    context: &str,
+) -> Result<reqwest::Response, String> {
+    if resp.status().is_success() {
+        return Ok(resp);
+    }
+    let status = resp.status();
+    let body = resp.text().await.unwrap_or_default();
+    Err(format!("{context} failed ({status}): {body}"))
+}
+
 /// Escape single quotes for safe interpolation into WIQL string literals.
 fn escape_wiql(value: &str) -> String {
     value.replace('\'', "''")
@@ -34,16 +48,14 @@ async fn fetch_product_iterations(state: &AppState) -> Result<Vec<IterationInfo>
         .header("Authorization", &auth)
         .send()
         .await
-        .map_err(|e| format!("Iterations tree error: {}", e))?;
+        .map_err(|e| format!("Iterations request failed: {e}"))?;
 
-    if !resp.status().is_success() {
-        return Ok(Vec::new());
-    }
+    let resp = check_response(resp, "Iterations").await?;
 
     let tree: serde_json::Value = resp
         .json()
         .await
-        .map_err(|e| format!("Iterations tree parse error: {}", e))?;
+        .map_err(|e| format!("Iterations parse error: {}", e))?;
 
     let mut all_iters = Vec::new();
     collect_leaf_iterations(&tree, "", &mut all_iters);
@@ -151,7 +163,7 @@ pub async fn fetch_work_items(state: &AppState) -> Result<Vec<WorkItem>, String>
     let auth = state.get_auth_header()?;
 
     // Get the sprint window paths for the WIQL filter
-    let product_iters = fetch_product_iterations(state).await.unwrap_or_default();
+    let product_iters = fetch_product_iterations(state).await?;
     let window_paths = get_sprint_window(&product_iters);
 
     let wiql_url = format!(
@@ -191,13 +203,9 @@ pub async fn fetch_work_items(state: &AppState) -> Result<Vec<WorkItem>, String>
         .json(&wiql_body)
         .send()
         .await
-        .map_err(|e| format!("WIQL HTTP error: {}", e))?;
+        .map_err(|e| format!("WIQL request failed: {e}"))?;
 
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("WIQL error ({}): {}", status, body));
-    }
+    let resp = check_response(resp, "WIQL query").await?;
 
     let wiql_data: WiqlResponse = resp
         .json()
@@ -231,13 +239,9 @@ pub async fn fetch_work_items(state: &AppState) -> Result<Vec<WorkItem>, String>
             .header("Authorization", &auth)
             .send()
             .await
-            .map_err(|e| format!("Work items HTTP error: {}", e))?;
+            .map_err(|e| format!("Work items request failed: {e}"))?;
 
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let body = resp.text().await.unwrap_or_default();
-            return Err(format!("Work items error ({}): {}", status, body));
-        }
+        let resp = check_response(resp, "Work items").await?;
 
         let data: WorkItemsResponse = resp
             .json()

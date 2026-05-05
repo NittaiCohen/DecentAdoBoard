@@ -116,30 +116,38 @@ async fn discover_orgs_via_entra(
     client: &reqwest::Client,
     bearer: &str,
 ) -> Result<Vec<AccountInfo>, String> {
-    let profile: ProfileResponse = client
+    let resp = client
         .get("https://app.vssps.visualstudio.com/_apis/profile/profiles/me?api-version=7.1")
         .header("Authorization", format!("Bearer {}", bearer))
         .send()
         .await
-        .map_err(|e| format!("Profile request failed: {}", e))?
+        .map_err(|e| format!("Profile request failed: {e}"))?;
+
+    let resp = crate::ado_client::check_response(resp, "Profile").await?;
+
+    let profile: ProfileResponse = resp
         .json()
         .await
-        .map_err(|e| format!("Profile parse error: {}", e))?;
+        .map_err(|e| format!("Profile parse error: {e}"))?;
 
     let url = format!(
         "https://app.vssps.visualstudio.com/_apis/accounts?memberId={}&api-version=7.1",
         profile.id
     );
 
-    let resp_text = client
+    let resp = client
         .get(&url)
         .header("Authorization", format!("Bearer {}", bearer))
         .send()
         .await
-        .map_err(|e| format!("Accounts request failed: {}", e))?
+        .map_err(|e| format!("Accounts request failed: {e}"))?;
+
+    let resp = crate::ado_client::check_response(resp, "Accounts").await?;
+
+    let resp_text = resp
         .text()
         .await
-        .map_err(|e| format!("Read error: {}", e))?;
+        .map_err(|e| format!("Read error: {e}"))?;
 
     parse_and_sort_accounts(&resp_text)
 }
@@ -317,18 +325,22 @@ pub async fn list_projects(
         organization
     );
 
-    let resp: ProjectsResponse = state
+    let resp = state
         .http_client
         .get(&url)
         .header("Authorization", &auth)
         .send()
         .await
-        .map_err(|e| format!("Projects request failed: {}", e))?
+        .map_err(|e| format!("Projects request failed: {e}"))?;
+
+    let resp = crate::ado_client::check_response(resp, "Projects").await?;
+
+    let data: ProjectsResponse = resp
         .json()
         .await
-        .map_err(|e| format!("Projects parse error: {}", e))?;
+        .map_err(|e| format!("Projects parse error: {e}"))?;
 
-    Ok(resp.value)
+    Ok(data.value)
 }
 
 /// List teams in a project.
@@ -344,18 +356,22 @@ pub async fn list_teams(
         organization, project
     );
 
-    let resp: TeamsResponse = state
+    let resp = state
         .http_client
         .get(&url)
         .header("Authorization", &auth)
         .send()
         .await
-        .map_err(|e| format!("Teams request failed: {}", e))?
+        .map_err(|e| format!("Teams request failed: {e}"))?;
+
+    let resp = crate::ado_client::check_response(resp, "Teams").await?;
+
+    let data: TeamsResponse = resp
         .json()
         .await
-        .map_err(|e| format!("Teams parse error: {}", e))?;
+        .map_err(|e| format!("Teams parse error: {e}"))?;
 
-    Ok(resp.value)
+    Ok(data.value)
 }
 
 /// List area paths in a project (flattened from the tree).
@@ -371,19 +387,23 @@ pub async fn list_area_paths(
         organization, project
     );
 
-    let resp: ClassificationNodeResponse = state
+    let resp = state
         .http_client
         .get(&url)
         .header("Authorization", &auth)
         .send()
         .await
-        .map_err(|e| format!("Area paths request failed: {}", e))?
+        .map_err(|e| format!("Area paths request failed: {e}"))?;
+
+    let resp = crate::ado_client::check_response(resp, "Area paths").await?;
+
+    let data: ClassificationNodeResponse = resp
         .json()
         .await
-        .map_err(|e| format!("Area paths parse error: {}", e))?;
+        .map_err(|e| format!("Area paths parse error: {e}"))?;
 
     let mut paths = Vec::new();
-    flatten_area_paths(&resp, "", &mut paths);
+    flatten_area_paths(&data, "", &mut paths);
     Ok(paths)
 }
 

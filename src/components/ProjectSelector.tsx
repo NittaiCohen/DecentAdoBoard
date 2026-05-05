@@ -76,43 +76,55 @@ function useOrgOptions() {
 function useProjectOptions(organization: string) {
   const [projectOptions, setProjectOptions] = useState<string[]>([]);
   const [projectLoading, setProjectLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!organization) {
       setProjectOptions([]);
+      setError("");
       return;
     }
     setProjectLoading(true);
+    setError("");
     listProjectsTauri(organization)
       .then((projs) => {
         const sorted = projs.map((p) => p.name).sort((a, b) => a.localeCompare(b));
         setProjectOptions(sorted);
       })
-      .catch(() => setProjectOptions([]))
+      .catch((err: unknown) => {
+        setProjectOptions([]);
+        setError(`Projects: ${String(err)}`);
+      })
       .finally(() => setProjectLoading(false));
   }, [organization]);
 
-  return { projectOptions, projectLoading };
+  return { projectOptions, projectLoading, error };
 }
 
 /** Hook that fetches area paths for the selected organization and project. */
 function useAreaOptions(organization: string, project: string) {
   const [areaOptions, setAreaOptions] = useState<string[]>([]);
   const [areaLoading, setAreaLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!organization || !project) {
       setAreaOptions([]);
+      setError("");
       return;
     }
     setAreaLoading(true);
+    setError("");
     listAreaPathsTauri(organization, project)
       .then((paths) => setAreaOptions(paths.sort((a, b) => a.localeCompare(b))))
-      .catch(() => setAreaOptions([]))
+      .catch((err: unknown) => {
+        setAreaOptions([]);
+        setError(`Area paths: ${String(err)}`);
+      })
       .finally(() => setAreaLoading(false));
   }, [organization, project]);
 
-  return { areaOptions, areaLoading };
+  return { areaOptions, areaLoading, error };
 }
 
 function ProjectFormFields({
@@ -193,10 +205,10 @@ function useProjectForm(onConfigured: () => void) {
   const [loading, setLoading] = useState(false);
 
   const { orgOptions, orgLoading, error: orgError } = useOrgOptions();
-  const { projectOptions, projectLoading } = useProjectOptions(organization);
-  const { areaOptions, areaLoading } = useAreaOptions(organization, project);
+  const { projectOptions, projectLoading, error: projectError } = useProjectOptions(organization);
+  const { areaOptions, areaLoading, error: areaError } = useAreaOptions(organization, project);
 
-  const displayError = error || orgError;
+  const displayError = error || orgError || projectError || areaError;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
