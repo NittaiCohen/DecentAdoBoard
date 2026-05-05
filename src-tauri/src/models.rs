@@ -163,6 +163,29 @@ pub struct ClassificationNodeResponse {
     pub children: Option<Vec<ClassificationNodeResponse>>,
 }
 
+// --- Work item type states ---
+
+#[derive(Debug, Deserialize)]
+pub struct WorkItemTypeStatesResponse {
+    pub value: Vec<AdoWorkItemTypeState>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdoWorkItemTypeState {
+    pub name: String,
+    pub color: String,
+    pub category: String,
+}
+
+// --- ADO work item PATCH body types ---
+
+#[derive(Debug, Serialize)]
+pub struct JsonPatchOperation {
+    pub op: String,
+    pub path: String,
+    pub value: serde_json::Value,
+}
+
 // --- Frontend-facing types ---
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

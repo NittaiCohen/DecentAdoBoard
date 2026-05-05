@@ -53,3 +53,9 @@ export interface TeamInfo {
   id: string;
   name: string;
 }
+
+export interface WorkItemTypeState {
+  name: string;
+  color: string;
+  category: string;
+}

@@ -1,4 +1,5 @@
 mod ado_client;
+mod ado_writes;
 mod audit_log;
 mod commands;
 mod models;
@@ -32,6 +33,8 @@ pub fn run() {
             commands::list_projects,
             commands::list_teams,
             commands::list_area_paths,
+            ado_writes::update_work_item_state,
+            ado_writes::get_work_item_type_states,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

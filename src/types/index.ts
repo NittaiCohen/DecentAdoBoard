@@ -7,6 +7,7 @@ export {
   type AccountInfo,
   type ProjectInfo,
   type TeamInfo,
+  type WorkItemTypeState,
 } from "./ado";
 
 export { type RequiredSome } from "./utils";

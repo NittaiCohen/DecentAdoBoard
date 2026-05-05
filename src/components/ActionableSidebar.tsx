@@ -2,10 +2,9 @@ import type { BoardData, WorkItem } from "../types";
 import {
   TYPE_COLORS,
   DEFAULT_TYPE_COLOR,
-  STATE_BADGES,
-  DEFAULT_STATE_BADGE,
 } from "../utils/workItemColors";
 import { computeActionableSet } from "../utils/actionable";
+import StateDropdown from "./StateDropdown";
 
 interface ActionableSidebarProps {
   isOpen: boolean;
@@ -130,7 +129,6 @@ function buildActionableTree(boardData?: BoardData): ActionableNode[] {
 
 function ActionableNodeCard({ node, depth }: { node: ActionableNode; depth: number }) {
   const colorClass = TYPE_COLORS[node.workItem.work_item_type] ?? DEFAULT_TYPE_COLOR;
-  const stateClass = STATE_BADGES[node.workItem.state] ?? DEFAULT_STATE_BADGE;
   const compact = depth > 0;
   const padding = compact ? "px-2 py-1.5" : "p-3";
 
@@ -140,9 +138,11 @@ function ActionableNodeCard({ node, depth }: { node: ActionableNode; depth: numb
         <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
           {`#${node.workItem.id}`}
         </span>
-        <span className={`text-[10px] px-1 py-0.5 rounded ${stateClass}`}>
-          {node.workItem.state}
-        </span>
+        <StateDropdown
+          workItemId={node.workItem.id}
+          workItemType={node.workItem.work_item_type}
+          currentState={node.workItem.state}
+        />
         {node.children.length > 0 && (
           <span className="text-[10px] text-gray-500 dark:text-gray-400 ml-auto">
             {`${node.children.length} actionable`}

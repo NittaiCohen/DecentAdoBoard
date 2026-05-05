@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useQuery } from "@tanstack/react-query";
-import type { BoardData, PatGenerationResult, AccountInfo, ProjectInfo, TeamInfo } from "../types";
+import type { BoardData, PatGenerationResult, AccountInfo, ProjectInfo, TeamInfo, WorkItemTypeState } from "../types";
 
 /** Send a PAT to the Rust backend for authentication. */
 export async function setPatTauri(pat: string): Promise<void> {
@@ -58,5 +58,25 @@ export function useBoardData(enabled: boolean) {
     queryKey: ["boardData"],
     queryFn: fetchBoardData,
     enabled,
+  });
+}
+
+/** Update a work item's state in ADO. */
+export async function updateWorkItemStateTauri(
+  workItemId: number,
+  newState: string,
+): Promise<void> {
+  await invoke("update_work_item_state", {
+    workItemId,
+    newState,
+  });
+}
+
+/** Fetch valid states for a work item type from ADO. */
+export async function getWorkItemTypeStatesTauri(
+  workItemType: string,
+): Promise<WorkItemTypeState[]> {
+  return await invoke<WorkItemTypeState[]>("get_work_item_type_states", {
+    workItemType,
   });
 }

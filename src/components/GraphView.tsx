@@ -40,6 +40,8 @@ export default function GraphView({ boardData }: GraphViewProps) {
   );
 }
 
+const ZOOM_DURATION_MS = 100;
+
 function GraphViewInner({ boardData }: GraphViewProps) {
   const [expandedParents, handleToggleExpand] = useExpandedParents(boardData);
   const { zoomIn, zoomOut, setViewport, getViewport } = useReactFlow();
@@ -95,18 +97,18 @@ function GraphViewInner({ boardData }: GraphViewProps) {
       if (e.ctrlKey || e.metaKey) {
         // Ctrl/Cmd + scroll → zoom
         if (e.deltaY < 0) {
-          zoomIn({ duration: 100 });
+          void zoomIn({ duration: ZOOM_DURATION_MS });
         } else {
-          zoomOut({ duration: 100 });
+          void zoomOut({ duration: ZOOM_DURATION_MS });
         }
       } else {
         // Plain scroll → vertical pan, Shift+scroll → horizontal pan
         const { x, y, zoom } = getViewport();
         const panSpeed = 1 / zoom;
         if (e.shiftKey) {
-          setViewport({ x: x - e.deltaY * panSpeed, y, zoom });
+          void setViewport({ x: x - e.deltaY * panSpeed, y, zoom });
         } else {
-          setViewport({ x, y: y - e.deltaY * panSpeed, zoom });
+          void setViewport({ x, y: y - e.deltaY * panSpeed, zoom });
         }
       }
     },
@@ -115,7 +117,9 @@ function GraphViewInner({ boardData }: GraphViewProps) {
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el) return;
+    if (!el) {
+      return;
+    }
     el.addEventListener("wheel", handleWheel, { passive: false });
     return () => el.removeEventListener("wheel", handleWheel);
   }, [handleWheel]);

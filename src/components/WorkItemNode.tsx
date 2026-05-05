@@ -4,9 +4,8 @@ import type { WorkItem } from "../types";
 import {
   TYPE_COLORS,
   DEFAULT_TYPE_COLOR,
-  STATE_BADGES,
-  DEFAULT_STATE_BADGE,
 } from "../utils/workItemColors";
+import StateDropdown from "./StateDropdown";
 
 export interface WorkItemNodeData extends Record<string, unknown> {
   workItem: WorkItem;
@@ -22,12 +21,15 @@ export type WorkItemNode = Node<WorkItemNodeData, "workItem">;
 
 function WorkItemHeader({ data }: { data: WorkItemNodeData }) {
   const { workItem, isParent, isExpanded, childCount, doneChildCount, onToggleExpand } = data;
-  const stateClass = STATE_BADGES[workItem.state] ?? DEFAULT_STATE_BADGE;
 
   return (
     <div className="flex items-center gap-1.5 mb-1">
       <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">{`#${workItem.id}`}</span>
-      <span className={`text-[10px] px-1 py-0.5 rounded ${stateClass}`}>{workItem.state}</span>
+      <StateDropdown
+        workItemId={workItem.id}
+        workItemType={workItem.work_item_type}
+        currentState={workItem.state}
+      />
       {isParent && (
         <button
           onClick={(e) => {
