@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -6,6 +6,8 @@ import {
   BackgroundVariant,
   useNodesState,
   useEdgesState,
+  useReactFlow,
+  ReactFlowProvider,
   type NodeTypes,
   type Node,
 } from "@xyflow/react";
@@ -31,7 +33,16 @@ const nodeTypes: NodeTypes = {
 };
 
 export default function GraphView({ boardData }: GraphViewProps) {
+  return (
+    <ReactFlowProvider>
+      <GraphViewInner boardData={boardData} />
+    </ReactFlowProvider>
+  );
+}
+
+function GraphViewInner({ boardData }: GraphViewProps) {
   const [expandedParents, handleToggleExpand] = useExpandedParents(boardData);
+  const { zoomIn, zoomOut, setViewport, getViewport } = useReactFlow();
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(() => {
     if (!boardData) {
@@ -75,8 +86,42 @@ export default function GraphView({ boardData }: GraphViewProps) {
     wiMapRef,
   );
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      e.preventDefault();
+
+      if (e.ctrlKey || e.metaKey) {
+        // Ctrl/Cmd + scroll → zoom
+        if (e.deltaY < 0) {
+          zoomIn({ duration: 100 });
+        } else {
+          zoomOut({ duration: 100 });
+        }
+      } else {
+        // Plain scroll → vertical pan, Shift+scroll → horizontal pan
+        const { x, y, zoom } = getViewport();
+        const panSpeed = 1 / zoom;
+        if (e.shiftKey) {
+          setViewport({ x: x - e.deltaY * panSpeed, y, zoom });
+        } else {
+          setViewport({ x, y: y - e.deltaY * panSpeed, zoom });
+        }
+      }
+    },
+    [zoomIn, zoomOut, getViewport, setViewport],
+  );
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [handleWheel]);
+
   return (
-    <div className="w-full h-full">
+    <div ref={containerRef} className="w-full h-full">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -90,6 +135,8 @@ export default function GraphView({ boardData }: GraphViewProps) {
         proOptions={{ hideAttribution: true }}
         minZoom={0.1}
         maxZoom={2}
+        zoomOnScroll={false}
+        panOnScroll={false}
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
         <Controls />
