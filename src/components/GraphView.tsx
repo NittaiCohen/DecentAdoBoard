@@ -3,6 +3,7 @@ import {
   ReactFlow,
   Background,
   Controls,
+  ControlButton,
   BackgroundVariant,
   useNodesState,
   useEdgesState,
@@ -40,11 +41,14 @@ export default function GraphView({ boardData }: GraphViewProps) {
   );
 }
 
-const ZOOM_DURATION_MS = 100;
+const SCROLL_ZOOM_SENSITIVITY = 0.01;
+const MIN_ZOOM = 0.1;
+const MAX_ZOOM = 2;
+const ZOOM_FACTOR = 1.25;
 
 function GraphViewInner({ boardData }: GraphViewProps) {
   const [expandedParents, handleToggleExpand] = useExpandedParents(boardData);
-  const { zoomIn, zoomOut, setViewport, getViewport } = useReactFlow();
+  const { setViewport, getViewport, fitView } = useReactFlow();
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(() => {
     if (!boardData) {
@@ -92,16 +96,20 @@ function GraphViewInner({ boardData }: GraphViewProps) {
 
   const handleWheel = useCallback(
     (e: WheelEvent) => {
-      e.preventDefault();
+      // Ctrl/Cmd + scroll → zoom
+      const isPinchOrCtrl = e.ctrlKey || e.metaKey;
 
-      if (e.ctrlKey || e.metaKey) {
+      if (isPinchOrCtrl) {
+        e.preventDefault();
         // Ctrl/Cmd + scroll → zoom
-        if (e.deltaY < 0) {
-          void zoomIn({ duration: ZOOM_DURATION_MS });
-        } else {
-          void zoomOut({ duration: ZOOM_DURATION_MS });
-        }
+        const { x, y, zoom } = getViewport();
+        const newZoom = Math.max(
+          MIN_ZOOM,
+          Math.min(MAX_ZOOM, zoom * (1 - e.deltaY * SCROLL_ZOOM_SENSITIVITY)),
+        );
+        void setViewport({ x, y, zoom: newZoom });
       } else {
+        e.preventDefault();
         // Plain scroll → vertical pan, Shift+scroll → horizontal pan
         const { x, y, zoom } = getViewport();
         const panSpeed = 1 / zoom;
@@ -112,8 +120,53 @@ function GraphViewInner({ boardData }: GraphViewProps) {
         }
       }
     },
-    [zoomIn, zoomOut, getViewport, setViewport],
+    [getViewport, setViewport],
   );
+
+  const zoomToCenter = useCallback(
+    (newZoom: number) => {
+      const { x, y, zoom } = getViewport();
+      const container = containerRef.current;
+      if (!container) {
+        return;
+      }
+      const cx = container.clientWidth / 2;
+      const cy = container.clientHeight / 2;
+      const scale = newZoom / zoom;
+      void setViewport(
+        { x: cx - (cx - x) * scale, y: cy - (cy - y) * scale, zoom: newZoom },
+        { duration: 150 },
+      );
+    },
+    [getViewport, setViewport],
+  );
+
+  const handleZoomIn = useCallback(() => {
+    const { zoom } = getViewport();
+    zoomToCenter(Math.min(MAX_ZOOM, zoom * ZOOM_FACTOR));
+  }, [getViewport, zoomToCenter]);
+
+  const handleZoomOut = useCallback(() => {
+    const { zoom } = getViewport();
+    zoomToCenter(Math.max(MIN_ZOOM, zoom / ZOOM_FACTOR));
+  }, [getViewport, zoomToCenter]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e.ctrlKey && !e.metaKey) {
+        return;
+      }
+      if (e.key === "=" || e.key === "+") {
+        e.preventDefault();
+        handleZoomIn();
+      } else if (e.key === "-") {
+        e.preventDefault();
+        handleZoomOut();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleZoomIn, handleZoomOut]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -125,7 +178,7 @@ function GraphViewInner({ boardData }: GraphViewProps) {
   }, [handleWheel]);
 
   return (
-    <div ref={containerRef} className="w-full h-full">
+    <div ref={containerRef} className="relative w-full h-full">
       <ReactFlow
         nodes={nodes}
         edges={edges}
@@ -137,13 +190,28 @@ function GraphViewInner({ boardData }: GraphViewProps) {
         nodeTypes={nodeTypes}
         fitView
         proOptions={{ hideAttribution: true }}
-        minZoom={0.1}
-        maxZoom={2}
+        minZoom={MIN_ZOOM}
+        maxZoom={MAX_ZOOM}
         zoomOnScroll={false}
         panOnScroll={false}
       >
         <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
-        <Controls />
+        <Controls showZoom={false} showFitView={false} showInteractive={false}>
+          <ControlButton onClick={handleZoomIn} title="Zoom in">
+            {"+"}
+          </ControlButton>
+          <ControlButton onClick={handleZoomOut} title="Zoom out">
+            {"−"}
+          </ControlButton>
+          <ControlButton
+            onClick={() => {
+              void fitView({ duration: 300 });
+            }}
+            title="Fit view"
+          >
+            {"⊡"}
+          </ControlButton>
+        </Controls>
       </ReactFlow>
     </div>
   );

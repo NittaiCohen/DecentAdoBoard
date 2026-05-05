@@ -14,7 +14,8 @@
       {
         "title": "Decent ADO Board",
         "width": 1280,
-        "height": 800
+        "height": 800,
+        "zoomHotkeysEnabled": false
       }
     ],
     "security": {
