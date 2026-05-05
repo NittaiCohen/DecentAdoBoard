@@ -4,6 +4,11 @@ use crate::state::AppState;
 const WORK_ITEM_BATCH_SIZE: usize = 200;
 const SPRINT_WINDOW: usize = 2; // sprints before and after current
 
+/// Escape single quotes for safe interpolation into WIQL string literals.
+fn escape_wiql(value: &str) -> String {
+    value.replace('\'', "''")
+}
+
 #[derive(Debug, Clone)]
 struct IterationInfo {
     path: String,
@@ -158,20 +163,22 @@ pub async fn fetch_work_items(state: &AppState) -> Result<Vec<WorkItem>, String>
         // Fallback: no iteration info, just use area + @Me
         format!(
             "SELECT [System.Id] FROM WorkItems WHERE [System.AreaPath] UNDER '{}' AND [System.AssignedTo] = @Me",
-            config.area_path
+            escape_wiql(&config.area_path)
         )
     } else {
         // Build OR condition for iteration paths
         let iter_conditions: Vec<String> = window_paths
             .iter()
-            .map(|p| format!("[System.IterationPath] = '{}'", p))
+            .map(|p| format!("[System.IterationPath] = '{}'", escape_wiql(p)))
             .collect();
         format!(
             "SELECT [System.Id] FROM WorkItems WHERE [System.AreaPath] UNDER '{}' AND [System.AssignedTo] = @Me AND ({})",
-            config.area_path,
+            escape_wiql(&config.area_path),
             iter_conditions.join(" OR ")
         )
     };
+
+    #[cfg(debug_assertions)]
     eprintln!("[DEBUG] WIQL: {}", wiql_query);
 
     let wiql_body = serde_json::json!({ "query": wiql_query });
@@ -721,5 +728,30 @@ mod tests {
         assert!(result[0].children.is_empty());
         assert!(result[0].parent_id.is_none());
         assert_eq!(result[0].title, "Item 1");
+    }
+
+    #[test]
+    fn escape_wiql_no_quotes() {
+        assert_eq!(escape_wiql("Project\\Sprint 1"), "Project\\Sprint 1");
+    }
+
+    #[test]
+    fn escape_wiql_single_quotes() {
+        assert_eq!(escape_wiql("Team's Area"), "Team''s Area");
+    }
+
+    #[test]
+    fn escape_wiql_multiple_quotes() {
+        assert_eq!(escape_wiql("It's Bob's"), "It''s Bob''s");
+    }
+
+    #[test]
+    fn escape_wiql_consecutive_quotes() {
+        assert_eq!(escape_wiql("a''b"), "a''''b");
+    }
+
+    #[test]
+    fn escape_wiql_empty() {
+        assert_eq!(escape_wiql(""), "");
     }
 }
