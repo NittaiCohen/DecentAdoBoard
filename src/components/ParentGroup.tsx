@@ -1,6 +1,8 @@
 import { memo } from "react";
 import { Handle, Position, useStore, type NodeProps, type Node } from "@xyflow/react";
 
+import { STATE_BADGES, DEFAULT_STATE_BADGE } from "../utils/workItemColors";
+
 export interface ParentGroupData extends Record<string, unknown> {
   label: string;
   workItemId: number;
@@ -38,6 +40,7 @@ const viewportSelector = (s: { transform: [number, number, number] }) => s.trans
 
 function ParentGroupComponent({ data, positionAbsoluteX }: NodeProps<ParentGroupNode>) {
   const colorClass = TYPE_COLORS[data.workItemType] ?? DEFAULT_COLORS;
+  const stateClass = STATE_BADGES[data.state] ?? DEFAULT_STATE_BADGE;
 
   const [viewX, , zoom] = useStore(viewportSelector);
 
@@ -75,9 +78,7 @@ function ParentGroupComponent({ data, positionAbsoluteX }: NodeProps<ParentGroup
         }}
       >
         <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">{`#${data.workItemId}`}</span>
-        <span className="text-[10px] px-1 py-0.5 rounded bg-gray-300 dark:bg-gray-600 text-gray-700 dark:text-gray-200">
-          {data.state}
-        </span>
+        <span className={`text-[10px] px-1 py-0.5 rounded ${stateClass}`}>{data.state}</span>
         <span
           className="text-xs text-gray-900 dark:text-gray-100 truncate flex-1"
           title={data.label}
