@@ -1,4 +1,5 @@
 mod ado_client;
+mod audit_log;
 mod commands;
 mod models;
 mod state;
@@ -9,7 +10,19 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(state::AppState::new())
+        .setup(|app| {
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .expect("failed to resolve app data dir");
+            app.manage(state::AppState::new(data_dir));
+
+            #[cfg(debug_assertions)]
+            if let Some(window) = app.get_webview_window("main") {
+                window.open_devtools();
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::set_pat,
             commands::set_config,
@@ -20,13 +33,6 @@ pub fn run() {
             commands::list_teams,
             commands::list_area_paths,
         ])
-        .setup(|app| {
-            #[cfg(debug_assertions)]
-            if let Some(window) = app.get_webview_window("main") {
-                window.open_devtools();
-            }
-            Ok(())
-        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

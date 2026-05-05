@@ -1,15 +1,17 @@
 use std::sync::Mutex;
 
+use crate::audit_log::AuditLog;
 use crate::models::AdoConfig;
 
 pub struct AppState {
     pub config: Mutex<Option<AdoConfig>>,
     pub pat: Mutex<Option<String>>,
     pub http_client: reqwest::Client,
+    pub audit_log: AuditLog,
 }
 
 impl AppState {
-    pub fn new() -> Self {
+    pub fn new(log_dir: std::path::PathBuf) -> Self {
         Self {
             config: Mutex::new(None),
             pat: Mutex::new(None),
@@ -18,6 +20,7 @@ impl AppState {
                 .timeout(std::time::Duration::from_secs(30))
                 .build()
                 .expect("failed to create HTTP client"),
+            audit_log: AuditLog::new(&log_dir),
         }
     }
 
@@ -150,9 +153,13 @@ mod tests {
         assert_eq!(base64_encode("hello world!"), "aGVsbG8gd29ybGQh");
     }
 
+    fn test_state() -> AppState {
+        AppState::new(std::env::temp_dir().join("decent_ado_board_test"))
+    }
+
     #[test]
     fn auth_header_with_pat() {
-        let state = AppState::new();
+        let state = test_state();
         *state.pat.lock().unwrap() = Some("mytoken".to_string());
         let header = state.get_auth_header().unwrap();
         // ":mytoken" base64 = "Om15dG9rZW4="
@@ -161,7 +168,7 @@ mod tests {
 
     #[test]
     fn auth_header_without_pat() {
-        let state = AppState::new();
+        let state = test_state();
         let result = state.get_auth_header();
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "PAT not configured");
@@ -169,7 +176,7 @@ mod tests {
 
     #[test]
     fn get_config_without_config() {
-        let state = AppState::new();
+        let state = test_state();
         let result = state.get_config();
         assert!(result.is_err());
         assert_eq!(result.unwrap_err(), "ADO not configured");
@@ -177,7 +184,7 @@ mod tests {
 
     #[test]
     fn get_config_with_config() {
-        let state = AppState::new();
+        let state = test_state();
         *state.config.lock().unwrap() = Some(AdoConfig {
             organization: "myorg".to_string(),
             project: "myproj".to_string(),
