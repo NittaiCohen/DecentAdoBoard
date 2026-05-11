@@ -5,14 +5,14 @@ import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // Mock the Tauri invoke calls
-vi.mock("../hooks/useAdoData", () => ({
-  getWorkItemTypeStatesTauri: vi.fn().mockResolvedValue([
+vi.mock("../api/tauri", () => ({
+  getWorkItemTypeStates: vi.fn().mockResolvedValue([
     { name: "New", color: "b2b2b2", category: "Proposed" },
     { name: "Active", color: "007acc", category: "InProgress" },
     { name: "Resolved", color: "339933", category: "Resolved" },
     { name: "Closed", color: "339933", category: "Completed" },
   ]),
-  updateWorkItemStateTauri: vi.fn().mockResolvedValue(undefined),
+  updateWorkItemState: vi.fn().mockResolvedValue(undefined),
 }));
 
 vi.mock("../utils/storage", () => ({
@@ -24,7 +24,7 @@ vi.mock("../utils/storage", () => ({
 }));
 
 import StateDropdown from "./StateDropdown";
-import { getWorkItemTypeStatesTauri, updateWorkItemStateTauri } from "../hooks/useAdoData";
+import { getWorkItemTypeStates, updateWorkItemState } from "../api/tauri";
 
 function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
   const queryClient = new QueryClient({
@@ -61,7 +61,7 @@ describe("StateDropdown", () => {
 
     // Should show loading or states
     await waitFor(() => {
-      expect(getWorkItemTypeStatesTauri).toHaveBeenCalledWith("Task");
+      expect(getWorkItemTypeStates).toHaveBeenCalledWith("Task");
     });
   });
 
@@ -84,7 +84,7 @@ describe("StateDropdown", () => {
     expect(screen.getByText("Closed")).toBeTruthy();
   });
 
-  it("calls updateWorkItemStateTauri when selecting a state", async () => {
+  it("calls updateWorkItemState when selecting a state", async () => {
     render(
       createElement(StateDropdown, {
         workItemId: 42,
@@ -103,7 +103,7 @@ describe("StateDropdown", () => {
     fireEvent.click(screen.getByText("Resolved"));
 
     await waitFor(() => {
-      expect(updateWorkItemStateTauri).toHaveBeenCalledWith(42, "Resolved");
+      expect(updateWorkItemState).toHaveBeenCalledWith(42, "Resolved");
     });
   });
 
@@ -131,7 +131,7 @@ describe("StateDropdown", () => {
   });
 
   it("does not allow selecting the current state", async () => {
-    const mockedUpdate = vi.mocked(updateWorkItemStateTauri);
+    const mockedUpdate = vi.mocked(updateWorkItemState);
     mockedUpdate.mockClear();
 
     render(

@@ -35,7 +35,7 @@ struct IterationInfo {
 /// filtered to the product subtree matching the area path.
 async fn fetch_product_iterations(state: &AppState) -> Result<Vec<IterationInfo>, String> {
     let config = state.get_config()?;
-    let auth = state.get_auth_header()?;
+    let auth = state.get_bearer_token().await?;
 
     let url = format!(
         "https://dev.azure.com/{}/{}/_apis/wit/classificationnodes/Iterations?$depth=10&api-version=7.1",
@@ -120,18 +120,17 @@ fn get_sprint_window(iterations: &[IterationInfo]) -> Vec<String> {
     sorted.sort_by(|a, b| a.start.cmp(&b.start));
 
     let now = chrono::Utc::now();
-    let current_idx = sorted.iter().position(|i| {
-        match (i.start, i.finish) {
-            (Some(s), Some(f)) => s <= now && now <= f,
-            _ => false,
-        }
+    let current_idx = sorted.iter().position(|i| match (i.start, i.finish) {
+        (Some(s), Some(f)) => s <= now && now <= f,
+        _ => false,
     });
 
     let center = current_idx.unwrap_or_else(|| {
         // If no current sprint, find the nearest future one
-        sorted.iter().position(|i| {
-            i.start.map(|s| s > now).unwrap_or(false)
-        }).unwrap_or(0)
+        sorted
+            .iter()
+            .position(|i| i.start.map(|s| s > now).unwrap_or(false))
+            .unwrap_or(0)
     });
 
     let start = center.saturating_sub(SPRINT_WINDOW);
@@ -160,7 +159,7 @@ pub async fn fetch_iterations(state: &AppState) -> Result<Vec<Iteration>, String
 
 pub async fn fetch_work_items(state: &AppState) -> Result<Vec<WorkItem>, String> {
     let config = state.get_config()?;
-    let auth = state.get_auth_header()?;
+    let auth = state.get_bearer_token().await?;
 
     // Get the sprint window paths for the WIQL filter
     let product_iters = fetch_product_iterations(state).await?;
@@ -339,7 +338,11 @@ mod tests {
             .with_timezone(&chrono::Utc)
     }
 
-    fn iteration(path: &str, start: chrono::DateTime<chrono::Utc>, finish: chrono::DateTime<chrono::Utc>) -> IterationInfo {
+    fn iteration(
+        path: &str,
+        start: chrono::DateTime<chrono::Utc>,
+        finish: chrono::DateTime<chrono::Utc>,
+    ) -> IterationInfo {
         IterationInfo {
             path: path.to_string(),
             name: path.rsplit('\\').next().unwrap().to_string(),
@@ -494,13 +497,37 @@ mod tests {
     fn get_sprint_window_current_in_middle() {
         let now = Utc::now();
         let iterations = vec![
-            iteration("Sprint0", now - Duration::days(60), now - Duration::days(50)),
-            iteration("Sprint1", now - Duration::days(40), now - Duration::days(30)),
-            iteration("Sprint2", now - Duration::days(20), now - Duration::days(10)),
+            iteration(
+                "Sprint0",
+                now - Duration::days(60),
+                now - Duration::days(50),
+            ),
+            iteration(
+                "Sprint1",
+                now - Duration::days(40),
+                now - Duration::days(30),
+            ),
+            iteration(
+                "Sprint2",
+                now - Duration::days(20),
+                now - Duration::days(10),
+            ),
             iteration("Sprint3", now - Duration::days(1), now + Duration::days(1)),
-            iteration("Sprint4", now + Duration::days(10), now + Duration::days(20)),
-            iteration("Sprint5", now + Duration::days(30), now + Duration::days(40)),
-            iteration("Sprint6", now + Duration::days(50), now + Duration::days(60)),
+            iteration(
+                "Sprint4",
+                now + Duration::days(10),
+                now + Duration::days(20),
+            ),
+            iteration(
+                "Sprint5",
+                now + Duration::days(30),
+                now + Duration::days(40),
+            ),
+            iteration(
+                "Sprint6",
+                now + Duration::days(50),
+                now + Duration::days(60),
+            ),
         ];
 
         assert_eq!(
@@ -514,9 +541,21 @@ mod tests {
         let now = Utc::now();
         let iterations = vec![
             iteration("Sprint0", now - Duration::days(5), now + Duration::days(5)),
-            iteration("Sprint1", now + Duration::days(10), now + Duration::days(20)),
-            iteration("Sprint2", now + Duration::days(30), now + Duration::days(40)),
-            iteration("Sprint3", now + Duration::days(50), now + Duration::days(60)),
+            iteration(
+                "Sprint1",
+                now + Duration::days(10),
+                now + Duration::days(20),
+            ),
+            iteration(
+                "Sprint2",
+                now + Duration::days(30),
+                now + Duration::days(40),
+            ),
+            iteration(
+                "Sprint3",
+                now + Duration::days(50),
+                now + Duration::days(60),
+            ),
         ];
 
         assert_eq!(
@@ -529,9 +568,21 @@ mod tests {
     fn get_sprint_window_current_at_end() {
         let now = Utc::now();
         let iterations = vec![
-            iteration("Sprint0", now - Duration::days(60), now - Duration::days(50)),
-            iteration("Sprint1", now - Duration::days(40), now - Duration::days(30)),
-            iteration("Sprint2", now - Duration::days(20), now - Duration::days(10)),
+            iteration(
+                "Sprint0",
+                now - Duration::days(60),
+                now - Duration::days(50),
+            ),
+            iteration(
+                "Sprint1",
+                now - Duration::days(40),
+                now - Duration::days(30),
+            ),
+            iteration(
+                "Sprint2",
+                now - Duration::days(20),
+                now - Duration::days(10),
+            ),
             iteration("Sprint3", now - Duration::days(5), now + Duration::days(5)),
         ];
 
@@ -545,9 +596,21 @@ mod tests {
     fn get_sprint_window_no_current_sprint_all_past() {
         let now = Utc::now();
         let iterations = vec![
-            iteration("Sprint0", now - Duration::days(60), now - Duration::days(50)),
-            iteration("Sprint1", now - Duration::days(40), now - Duration::days(30)),
-            iteration("Sprint2", now - Duration::days(20), now - Duration::days(10)),
+            iteration(
+                "Sprint0",
+                now - Duration::days(60),
+                now - Duration::days(50),
+            ),
+            iteration(
+                "Sprint1",
+                now - Duration::days(40),
+                now - Duration::days(30),
+            ),
+            iteration(
+                "Sprint2",
+                now - Duration::days(20),
+                now - Duration::days(10),
+            ),
             iteration("Sprint3", now - Duration::days(9), now - Duration::days(1)),
         ];
 
@@ -562,7 +625,11 @@ mod tests {
         let now = Utc::now();
         let iterations = vec![
             iteration("Sprint0", now - Duration::days(5), now + Duration::days(5)),
-            iteration("Sprint1", now + Duration::days(10), now + Duration::days(20)),
+            iteration(
+                "Sprint1",
+                now + Duration::days(10),
+                now + Duration::days(20),
+            ),
         ];
 
         assert_eq!(get_sprint_window(&iterations), vec!["Sprint0", "Sprint1"]);
@@ -633,16 +700,20 @@ mod tests {
     fn rel(rel_type: &str, linked_id: i64) -> AdoRelation {
         AdoRelation {
             rel: rel_type.to_string(),
-            url: format!("https://dev.azure.com/org/project/_apis/wit/workItems/{}", linked_id),
+            url: format!(
+                "https://dev.azure.com/org/project/_apis/wit/workItems/{}",
+                linked_id
+            ),
         }
     }
 
     #[test]
     fn convert_maps_dependency_forward_to_successors() {
         let known: std::collections::HashSet<i64> = [1, 2].into_iter().collect();
-        let items = vec![make_ado_item(1, Some(vec![
-            rel("System.LinkTypes.Dependency-Forward", 2),
-        ]))];
+        let items = vec![make_ado_item(
+            1,
+            Some(vec![rel("System.LinkTypes.Dependency-Forward", 2)]),
+        )];
 
         let result = convert_ado_work_items(items, &known);
 
@@ -653,9 +724,10 @@ mod tests {
     #[test]
     fn convert_maps_dependency_reverse_to_predecessors() {
         let known: std::collections::HashSet<i64> = [1, 2].into_iter().collect();
-        let items = vec![make_ado_item(2, Some(vec![
-            rel("System.LinkTypes.Dependency-Reverse", 1),
-        ]))];
+        let items = vec![make_ado_item(
+            2,
+            Some(vec![rel("System.LinkTypes.Dependency-Reverse", 1)]),
+        )];
 
         let result = convert_ado_work_items(items, &known);
 
@@ -666,10 +738,13 @@ mod tests {
     #[test]
     fn convert_maps_hierarchy_relations() {
         let known: std::collections::HashSet<i64> = [1, 2, 3].into_iter().collect();
-        let items = vec![make_ado_item(1, Some(vec![
-            rel("System.LinkTypes.Hierarchy-Forward", 2),
-            rel("System.LinkTypes.Hierarchy-Forward", 3),
-        ]))];
+        let items = vec![make_ado_item(
+            1,
+            Some(vec![
+                rel("System.LinkTypes.Hierarchy-Forward", 2),
+                rel("System.LinkTypes.Hierarchy-Forward", 3),
+            ]),
+        )];
 
         let result = convert_ado_work_items(items, &known);
 
@@ -680,9 +755,10 @@ mod tests {
     #[test]
     fn convert_maps_hierarchy_reverse_to_parent() {
         let known: std::collections::HashSet<i64> = [1, 2].into_iter().collect();
-        let items = vec![make_ado_item(2, Some(vec![
-            rel("System.LinkTypes.Hierarchy-Reverse", 1),
-        ]))];
+        let items = vec![make_ado_item(
+            2,
+            Some(vec![rel("System.LinkTypes.Hierarchy-Reverse", 1)]),
+        )];
 
         let result = convert_ado_work_items(items, &known);
 
@@ -693,11 +769,14 @@ mod tests {
     fn convert_filters_out_of_scope_relations() {
         // Item 99 is NOT in known_ids, so its relation should be excluded
         let known: std::collections::HashSet<i64> = [1, 2].into_iter().collect();
-        let items = vec![make_ado_item(1, Some(vec![
-            rel("System.LinkTypes.Dependency-Forward", 2),   // in scope
-            rel("System.LinkTypes.Dependency-Forward", 99),  // out of scope
-            rel("System.LinkTypes.Hierarchy-Forward", 99),   // out of scope
-        ]))];
+        let items = vec![make_ado_item(
+            1,
+            Some(vec![
+                rel("System.LinkTypes.Dependency-Forward", 2), // in scope
+                rel("System.LinkTypes.Dependency-Forward", 99), // out of scope
+                rel("System.LinkTypes.Hierarchy-Forward", 99), // out of scope
+            ]),
+        )];
 
         let result = convert_ado_work_items(items, &known);
 
@@ -708,9 +787,10 @@ mod tests {
     #[test]
     fn convert_ignores_unknown_relation_types() {
         let known: std::collections::HashSet<i64> = [1, 2].into_iter().collect();
-        let items = vec![make_ado_item(1, Some(vec![
-            rel("System.LinkTypes.Related", 2),
-        ]))];
+        let items = vec![make_ado_item(
+            1,
+            Some(vec![rel("System.LinkTypes.Related", 2)]),
+        )];
 
         let result = convert_ado_work_items(items, &known);
 

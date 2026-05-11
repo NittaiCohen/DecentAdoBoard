@@ -1,6 +1,7 @@
 mod ado_client;
 mod ado_writes;
 mod audit_log;
+mod auth;
 mod commands;
 mod models;
 mod state;
@@ -26,10 +27,13 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::set_pat,
             commands::set_config,
+            commands::set_pat,
+            commands::login_az_cli,
             commands::get_board_data,
-            commands::generate_pat,
+            commands::login_microsoft,
+            commands::logout,
+            commands::check_auth,
             commands::list_organizations,
             commands::list_projects,
             commands::list_teams,

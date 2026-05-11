@@ -32,13 +32,6 @@ export interface BoardData {
   iterations: Iteration[];
 }
 
-export interface PatGenerationResult {
-  pat: string;
-  organization: string;
-  display_name: string;
-  valid_to: string;
-}
-
 export interface AccountInfo {
   accountName: string;
   accountId: string;

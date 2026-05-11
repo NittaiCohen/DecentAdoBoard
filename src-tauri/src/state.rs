@@ -1,37 +1,32 @@
-use std::sync::Mutex;
-
 use crate::audit_log::AuditLog;
+use crate::auth::OAuthTokens;
 use crate::models::AdoConfig;
+use tokio::sync::Mutex;
+
+const TOKENS_FILE: &str = "auth_tokens.json";
 
 pub struct AppState {
-    pub config: Mutex<Option<AdoConfig>>,
-    pub pat: Mutex<Option<String>>,
+    pub config: std::sync::Mutex<Option<AdoConfig>>,
+    pub token: Mutex<Option<OAuthTokens>>,
     pub http_client: reqwest::Client,
     pub audit_log: AuditLog,
+    pub data_dir: std::path::PathBuf,
 }
 
 impl AppState {
-    pub fn new(log_dir: std::path::PathBuf) -> Self {
+    pub fn new(data_dir: std::path::PathBuf) -> Self {
+        let audit_log = AuditLog::new(&data_dir);
         Self {
-            config: Mutex::new(None),
-            pat: Mutex::new(None),
+            config: std::sync::Mutex::new(None),
+            token: Mutex::new(None),
             http_client: reqwest::Client::builder()
                 .user_agent("DecentAdoBoard/0.1")
                 .timeout(std::time::Duration::from_secs(30))
                 .build()
                 .expect("failed to create HTTP client"),
-            audit_log: AuditLog::new(&log_dir),
+            audit_log,
+            data_dir,
         }
-    }
-
-    pub fn get_auth_header(&self) -> Result<String, String> {
-        let pat = self
-            .pat
-            .lock()
-            .map_err(|e| format!("Lock error: {}", e))?;
-        let pat = pat.as_ref().ok_or("PAT not configured")?;
-        let encoded = base64_encode(&format!(":{}", pat));
-        Ok(format!("Basic {}", encoded))
     }
 
     pub fn get_config(&self) -> Result<AdoConfig, String> {
@@ -41,66 +36,103 @@ impl AppState {
             .map_err(|e| format!("Lock error: {}", e))?;
         config.clone().ok_or("ADO not configured".to_string())
     }
-}
 
-fn base64_encode(input: &str) -> String {
-    use std::io::Write;
-    let mut buf = Vec::new();
-    {
-        let mut encoder = Base64Encoder::new(&mut buf);
-        encoder.write_all(input.as_bytes()).unwrap();
+    fn tokens_path(&self) -> std::path::PathBuf {
+        self.data_dir.join(TOKENS_FILE)
     }
-    String::from_utf8(buf).unwrap()
-}
 
-// Minimal base64 encoder to avoid adding a dependency
-struct Base64Encoder<'a> {
-    output: &'a mut Vec<u8>,
-}
-
-impl<'a> Base64Encoder<'a> {
-    fn new(output: &'a mut Vec<u8>) -> Self {
-        Self { output }
-    }
-}
-
-impl<'a> std::io::Write for Base64Encoder<'a> {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        const CHARS: &[u8; 64] =
-            b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-        for chunk in buf.chunks(3) {
-            match chunk.len() {
-                3 => {
-                    self.output.push(CHARS[(chunk[0] >> 2) as usize]);
-                    self.output
-                        .push(CHARS[((chunk[0] & 0x03) << 4 | chunk[1] >> 4) as usize]);
-                    self.output
-                        .push(CHARS[((chunk[1] & 0x0f) << 2 | chunk[2] >> 6) as usize]);
-                    self.output.push(CHARS[(chunk[2] & 0x3f) as usize]);
-                }
-                2 => {
-                    self.output.push(CHARS[(chunk[0] >> 2) as usize]);
-                    self.output
-                        .push(CHARS[((chunk[0] & 0x03) << 4 | chunk[1] >> 4) as usize]);
-                    self.output
-                        .push(CHARS[((chunk[1] & 0x0f) << 2) as usize]);
-                    self.output.push(b'=');
-                }
-                1 => {
-                    self.output.push(CHARS[(chunk[0] >> 2) as usize]);
-                    self.output
-                        .push(CHARS[((chunk[0] & 0x03) << 4) as usize]);
-                    self.output.push(b'=');
-                    self.output.push(b'=');
-                }
-                _ => {}
+    pub async fn save_tokens_to_disk(&self) {
+        let guard = self.token.lock().await;
+        if let Some(tokens) = guard.as_ref() {
+            if let Ok(json) = serde_json::to_string_pretty(tokens) {
+                let _ = std::fs::create_dir_all(&self.data_dir);
+                let _ = std::fs::write(self.tokens_path(), json);
             }
         }
-        Ok(buf.len())
     }
 
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
+    pub async fn load_tokens_from_disk(&self) -> bool {
+        let path = self.tokens_path();
+        let Ok(content) = std::fs::read_to_string(&path) else {
+            return false;
+        };
+        let Ok(tokens) = serde_json::from_str::<OAuthTokens>(&content) else {
+            return false;
+        };
+        let mut guard = self.token.lock().await;
+        *guard = Some(tokens);
+        true
+    }
+
+    pub async fn clear_tokens(&self) {
+        let mut guard = self.token.lock().await;
+        *guard = None;
+        drop(guard);
+        let _ = std::fs::remove_file(self.tokens_path());
+    }
+
+    pub async fn get_bearer_token(&self) -> Result<String, String> {
+        use crate::auth::AuthSource;
+
+        enum Action {
+            ReturnBasic(String),   // PAT — return Basic auth header
+            ReturnBearer(String),  // valid token — return as-is
+            RefreshAzCli,          // AzCli token expired — re-acquire
+            RefreshOAuth(String),  // OAuth token expired — use refresh_token
+            SessionExpired,        // OAuth token expired with no refresh_token
+        }
+
+        let action = {
+            let guard = self.token.lock().await;
+            let token = guard
+                .as_ref()
+                .ok_or_else(|| "Not authenticated. Please sign in.".to_string())?;
+
+            match &token.source {
+                AuthSource::Pat => Action::ReturnBasic(token.access_token.clone()),
+                AuthSource::OAuthBrowser | AuthSource::AzCli => {
+                    let threshold = chrono::Utc::now() + chrono::Duration::seconds(300);
+                    if token.expires_at > threshold {
+                        Action::ReturnBearer(token.access_token.clone())
+                    } else if token.source == AuthSource::AzCli {
+                        Action::RefreshAzCli
+                    } else {
+                        match token.refresh_token.clone() {
+                            Some(rt) => Action::RefreshOAuth(rt),
+                            None => Action::SessionExpired,
+                        }
+                    }
+                }
+            }
+        };
+
+        match action {
+            Action::ReturnBasic(pat) => {
+                use base64::Engine as _;
+                let encoded = base64::engine::general_purpose::STANDARD
+                    .encode(format!(":{pat}"));
+                Ok(format!("Basic {encoded}"))
+            }
+            Action::ReturnBearer(token) => Ok(format!("Bearer {token}")),
+            Action::RefreshAzCli => {
+                let new_tokens = crate::auth::get_az_cli_token().await?;
+                let bearer = format!("Bearer {}", new_tokens.access_token);
+                *self.token.lock().await = Some(new_tokens);
+                self.save_tokens_to_disk().await;
+                Ok(bearer)
+            }
+            Action::RefreshOAuth(refresh_token) => {
+                let new_tokens =
+                    crate::auth::refresh_access_token(&self.http_client, &refresh_token)
+                        .await
+                        .map_err(|e| format!("Token refresh failed. Please sign in again. ({e})"))?;
+                let bearer = format!("Bearer {}", new_tokens.access_token);
+                *self.token.lock().await = Some(new_tokens);
+                self.save_tokens_to_disk().await;
+                Ok(bearer)
+            }
+            Action::SessionExpired => Err("Session expired. Please sign in again.".to_string()),
+        }
     }
 }
 
@@ -108,70 +140,13 @@ impl<'a> std::io::Write for Base64Encoder<'a> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn base64_empty() {
-        assert_eq!(base64_encode(""), "");
-    }
-
-    #[test]
-    fn base64_f() {
-        assert_eq!(base64_encode("f"), "Zg==");
-    }
-
-    #[test]
-    fn base64_fo() {
-        assert_eq!(base64_encode("fo"), "Zm8=");
-    }
-
-    #[test]
-    fn base64_foo() {
-        assert_eq!(base64_encode("foo"), "Zm9v");
-    }
-
-    #[test]
-    fn base64_foob() {
-        assert_eq!(base64_encode("foob"), "Zm9vYg==");
-    }
-
-    #[test]
-    fn base64_fooba() {
-        assert_eq!(base64_encode("fooba"), "Zm9vYmE=");
-    }
-
-    #[test]
-    fn base64_foobar() {
-        assert_eq!(base64_encode("foobar"), "Zm9vYmFy");
-    }
-
-    #[test]
-    fn base64_colon_prefix() {
-        assert_eq!(base64_encode(":mytoken"), "Om15dG9rZW4=");
-    }
-
-    #[test]
-    fn base64_special_chars() {
-        assert_eq!(base64_encode("hello world!"), "aGVsbG8gd29ybGQh");
-    }
-
     fn test_state() -> AppState {
-        AppState::new(std::env::temp_dir().join("decent_ado_board_test"))
-    }
-
-    #[test]
-    fn auth_header_with_pat() {
-        let state = test_state();
-        *state.pat.lock().unwrap() = Some("mytoken".to_string());
-        let header = state.get_auth_header().unwrap();
-        // ":mytoken" base64 = "Om15dG9rZW4="
-        assert_eq!(header, "Basic Om15dG9rZW4=");
-    }
-
-    #[test]
-    fn auth_header_without_pat() {
-        let state = test_state();
-        let result = state.get_auth_header();
-        assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "PAT not configured");
+        AppState::new(
+            std::env::current_dir()
+                .unwrap()
+                .join("target")
+                .join("state_test_data"),
+        )
     }
 
     #[test]

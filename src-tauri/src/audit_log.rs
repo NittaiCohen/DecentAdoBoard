@@ -12,14 +12,36 @@ use std::sync::Mutex;
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "action", rename_all = "snake_case")]
 pub enum AuditAction {
-    UpdateState { old: String, new: String },
-    UpdateTitle { old: String, new: String },
-    UpdateDescription { old: String, new: String },
-    UpdateIteration { old: String, new: String },
-    AddDependency { predecessor_id: i64 },
-    RemoveDependency { predecessor_id: i64 },
-    Create { title: String, work_item_type: String, iteration: String },
-    Restore { previous_state: String },
+    UpdateState {
+        old: String,
+        new: String,
+    },
+    UpdateTitle {
+        old: String,
+        new: String,
+    },
+    UpdateDescription {
+        old: String,
+        new: String,
+    },
+    UpdateIteration {
+        old: String,
+        new: String,
+    },
+    AddDependency {
+        predecessor_id: i64,
+    },
+    RemoveDependency {
+        predecessor_id: i64,
+    },
+    Create {
+        title: String,
+        work_item_type: String,
+        iteration: String,
+    },
+    Restore {
+        previous_state: String,
+    },
 }
 
 /// A single audit log entry persisted as one JSONL line.
@@ -58,10 +80,7 @@ impl AuditLog {
         let line =
             serde_json::to_string(&entry).map_err(|e| format!("Failed to serialize entry: {e}"))?;
 
-        let path = self
-            .path
-            .lock()
-            .map_err(|e| format!("Lock error: {e}"))?;
+        let path = self.path.lock().map_err(|e| format!("Lock error: {e}"))?;
 
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent)
@@ -90,10 +109,7 @@ mod tests {
 
     fn temp_log_dir() -> PathBuf {
         let id = COUNTER.fetch_add(1, Ordering::Relaxed);
-        let dir = std::env::temp_dir().join(format!(
-            "audit_log_test_{}_{id}",
-            std::process::id()
-        ));
+        let dir = std::env::temp_dir().join(format!("audit_log_test_{}_{id}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir

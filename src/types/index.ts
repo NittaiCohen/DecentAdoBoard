@@ -3,7 +3,6 @@ export {
   type Iteration,
   type AdoConfig,
   type BoardData,
-  type PatGenerationResult,
   type AccountInfo,
   type ProjectInfo,
   type TeamInfo,

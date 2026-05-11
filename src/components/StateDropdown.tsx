@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getWorkItemTypeStatesTauri, updateWorkItemStateTauri } from "../hooks/useAdoData";
+import { getWorkItemTypeStates, updateWorkItemState } from "../api/tauri";
 import { STATE_BADGES, DEFAULT_STATE_BADGE } from "../utils/workItemColors";
 import { getSavedConfig } from "../utils/storage";
 
@@ -41,13 +41,13 @@ export default function StateDropdown({
       config?.project ?? "",
       workItemType,
     ],
-    queryFn: () => getWorkItemTypeStatesTauri(workItemType),
+    queryFn: () => getWorkItemTypeStates(workItemType),
     enabled: isOpen,
     staleTime: FIVE_MINUTES_MS,
   });
 
   const mutation = useMutation({
-    mutationFn: (newState: string) => updateWorkItemStateTauri(workItemId, newState),
+    mutationFn: (newState: string) => updateWorkItemState(workItemId, newState),
     onSuccess: (_data, newState) => {
       setIsOpen(false);
       setDisplayState(newState);

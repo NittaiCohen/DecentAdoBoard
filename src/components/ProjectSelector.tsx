@@ -1,11 +1,6 @@
 import { useState, useEffect } from "react";
-import { isObject, isString } from "lodash-es";
-import {
-  setConfigTauri,
-  listOrganizationsTauri,
-  listProjectsTauri,
-  listAreaPathsTauri,
-} from "../hooks/useAdoData";
+import { setConfig, listOrganizations, listProjects, listAreaPaths } from "../api/tauri";
+import { getSavedConfig, saveConfig } from "../utils/storage";
 import ComboBox from "./ComboBox";
 
 interface ProjectSelectorProps {
@@ -13,57 +8,20 @@ interface ProjectSelectorProps {
   onBack: () => void;
 }
 
-const STORAGE_KEY = "ado-config";
-
-interface SavedConfig {
-  organization: string;
-  project: string;
-  areaPath: string;
-}
-
-/** Type guard to check if a value is a valid SavedConfig. */
-function isSavedConfig(value: unknown): value is SavedConfig {
-  return (
-    isObject(value) &&
-    "organization" in value &&
-    "project" in value &&
-    "areaPath" in value &&
-    isString(value.organization) &&
-    isString(value.project) &&
-    isString(value.areaPath)
-  );
-}
-
 /** Load the saved project config from localStorage, returning empty strings as defaults. */
-function loadSavedConfig(): SavedConfig {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) {
-      const config: unknown = JSON.parse(saved);
-      if (isSavedConfig(config)) {
-        return config;
-      }
-    }
-  } catch {
-    /* ignore invalid JSON */
-  }
-  return { organization: "", project: "", areaPath: "" };
-}
-
-/** Persist the project config to localStorage. */
-function saveConfig(config: SavedConfig) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
+function loadSavedConfig() {
+  return getSavedConfig() ?? { organization: "", project: "", areaPath: "" };
 }
 
 /** Hook that fetches the list of accessible Azure DevOps organizations on mount. */
 function useOrgOptions() {
   const [orgOptions, setOrgOptions] = useState<string[]>([]);
   const [orgLoading, setOrgLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setOrgLoading(true);
-    listOrganizationsTauri()
+    listOrganizations()
       .then((accts) => setOrgOptions(accts.map((a) => a.accountName).filter(Boolean)))
       .catch((err: unknown) => setError(`Org loading: ${String(err)}`))
       .finally(() => setOrgLoading(false));
@@ -76,17 +34,17 @@ function useOrgOptions() {
 function useProjectOptions(organization: string) {
   const [projectOptions, setProjectOptions] = useState<string[]>([]);
   const [projectLoading, setProjectLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!organization) {
       setProjectOptions([]);
-      setError("");
+      setError(null);
       return;
     }
     setProjectLoading(true);
-    setError("");
-    listProjectsTauri(organization)
+    setError(null);
+    listProjects(organization)
       .then((projs) => {
         const sorted = projs.map((p) => p.name).sort((a, b) => a.localeCompare(b));
         setProjectOptions(sorted);
@@ -105,17 +63,17 @@ function useProjectOptions(organization: string) {
 function useAreaOptions(organization: string, project: string) {
   const [areaOptions, setAreaOptions] = useState<string[]>([]);
   const [areaLoading, setAreaLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!organization || !project) {
       setAreaOptions([]);
-      setError("");
+      setError(null);
       return;
     }
     setAreaLoading(true);
-    setError("");
-    listAreaPathsTauri(organization, project)
+    setError(null);
+    listAreaPaths(organization, project)
       .then((paths) => setAreaOptions(paths.sort((a, b) => a.localeCompare(b))))
       .catch((err: unknown) => {
         setAreaOptions([]);
@@ -201,22 +159,22 @@ function useProjectForm(onConfigured: () => void) {
   );
   const [project, setProject] = useState(saved.project);
   const [areaPath, setAreaPath] = useState(saved.areaPath);
-  const [error, setError] = useState("");
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const { orgOptions, orgLoading, error: orgError } = useOrgOptions();
   const { projectOptions, projectLoading, error: projectError } = useProjectOptions(organization);
   const { areaOptions, areaLoading, error: areaError } = useAreaOptions(organization, project);
 
-  const displayError = error || orgError || projectError || areaError;
+  const displayError = error ?? orgError ?? projectError ?? areaError;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    setError("");
+    setError(null);
     setLoading(true);
 
     try {
-      await setConfigTauri(organization, project, areaPath);
+      await setConfig(organization, project, areaPath);
       saveConfig({ organization, project, areaPath });
       localStorage.setItem("ado_organization", organization);
       onConfigured();

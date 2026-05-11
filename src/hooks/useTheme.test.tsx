@@ -146,10 +146,9 @@ describe("useTheme", () => {
 
     systemIsDark = false;
     expect(changeHandler).not.toBeNull();
-    if (!changeHandler) {
-      throw new Error("changeHandler not set");
-    }
-    act(() => changeHandler());
+    act(() => {
+      changeHandler?.();
+    });
 
     expect(result.current.resolved).toBe("light");
     expect(document.documentElement.classList.contains("dark")).toBe(false);

@@ -8,7 +8,7 @@ use crate::state::AppState;
 /// Fetch the current state of a work item from ADO.
 async fn fetch_current_state(state: &AppState, work_item_id: i64) -> Result<String, String> {
     let config = state.get_config()?;
-    let auth = state.get_auth_header()?;
+    let auth = state.get_bearer_token().await?;
 
     let url = format!(
         "https://dev.azure.com/{}/{}/_apis/wit/workitems/{}?$select=System.State&api-version=7.1",
@@ -43,7 +43,7 @@ async fn update_state_impl(
     new_state: &str,
 ) -> Result<(), String> {
     let config = state.get_config()?;
-    let auth = state.get_auth_header()?;
+    let auth = state.get_bearer_token().await?;
 
     // Fetch current state from ADO for accurate audit logging
     let old_state = fetch_current_state(state, work_item_id).await?;
@@ -89,7 +89,7 @@ async fn fetch_states_impl(
     work_item_type: &str,
 ) -> Result<Vec<AdoWorkItemTypeState>, String> {
     let config = state.get_config()?;
-    let auth = state.get_auth_header()?;
+    let auth = state.get_bearer_token().await?;
 
     let url = format!(
         "https://dev.azure.com/{}/{}/_apis/wit/workitemtypes/{}/states?api-version=7.1",

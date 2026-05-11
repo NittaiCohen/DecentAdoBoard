@@ -2,10 +2,11 @@ import { useState, useEffect } from "react";
 import GraphView from "./components/GraphView";
 import ActionableSidebar from "./components/ActionableSidebar";
 import ThemeToggle from "./components/ThemeToggle";
-import PatLogin from "./components/Settings";
+import { MicrosoftLogin } from "./components/MicrosoftLogin";
 import ProjectSelector from "./components/ProjectSelector";
-import { useBoardData, setPatTauri, setConfigTauri } from "./hooks/useAdoData";
-import { getSavedPat, getSavedConfig, clearPat } from "./utils/storage";
+import { useBoardData } from "./hooks/useAdoData";
+import { setConfig, checkAuth, logout } from "./api/tauri";
+import { getSavedConfig, clearConfig } from "./utils/storage";
 import type { BoardData } from "./types";
 import "./App.css";
 
@@ -47,22 +48,25 @@ function ErrorScreen({ error, onBack }: { error: unknown; onBack: () => void }) 
   );
 }
 
-/** Hook that restores a previous session by re-sending saved PAT and config to the backend. */
+// TODO Visit this again down the line. It might be better to somehow pass an error code
+function isAuthError(error: unknown): boolean {
+  const message = String(error).toLowerCase();
+  return (
+    message.includes("401") ||
+    message.includes("unauthorized") ||
+    message.includes("not authenticated") ||
+    message.includes("sign in again")
+  );
+}
+
+/** Hook that restores a previous session by validating backend auth and re-sending saved config. */
 function useRestoreSession(setStep: (step: AppStep) => void) {
   const [restoring, setRestoring] = useState(true);
 
   useEffect(() => {
     async function restore() {
-      const pat = getSavedPat();
-      if (!pat) {
-        setRestoring(false);
-        return;
-      }
-
-      try {
-        await setPatTauri(pat);
-      } catch {
-        clearPat();
+      const authenticated = await checkAuth().catch(() => false);
+      if (!authenticated) {
         setRestoring(false);
         return;
       }
@@ -70,7 +74,7 @@ function useRestoreSession(setStep: (step: AppStep) => void) {
       const config = getSavedConfig();
       if (config) {
         try {
-          await setConfigTauri(config.organization, config.project, config.areaPath);
+          await setConfig(config.organization, config.project, config.areaPath);
           setStep("board");
         } catch {
           setStep("project");
@@ -91,23 +95,34 @@ function BoardView({
   sidebarOpen,
   onToggleSidebar,
   onChangeProject,
+  onSignOut,
 }: {
   boardData?: BoardData;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onChangeProject: () => void;
+  onSignOut: () => void;
 }) {
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
       <div className="flex-1 relative">
         <GraphView boardData={boardData} />
-        <button
-          onClick={onChangeProject}
-          className="absolute top-3 left-3 z-10 bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium px-3 py-1.5 rounded shadow transition-colors"
-          title="Change project"
-        >
-          {"⚙ Change Project"}
-        </button>
+        <div className="absolute top-3 left-3 z-10 flex gap-2">
+          <button
+            onClick={onChangeProject}
+            className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium px-3 py-1.5 rounded shadow transition-colors"
+            title="Change project"
+          >
+            {"⚙ Change Project"}
+          </button>
+          <button
+            onClick={onSignOut}
+            className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium px-3 py-1.5 rounded shadow transition-colors"
+            title="Sign out"
+          >
+            {"⎋ Sign Out"}
+          </button>
+        </div>
         <div className="absolute top-3 right-3 z-10">
           <ThemeToggle />
         </div>
@@ -120,9 +135,21 @@ function BoardView({
 function App() {
   const [step, setStep] = useState<AppStep>("pat");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [loginError, setLoginError] = useState<string | null>(null);
   const restoring = useRestoreSession(setStep);
 
   const { data: boardData, isLoading, error } = useBoardData(step === "board");
+
+  useEffect(() => {
+    if (step !== "board" || !error || !isAuthError(error)) {
+      return;
+    }
+
+    void logout().finally(() => {
+      setStep("pat");
+      setLoginError("Your session expired. Please sign in again.");
+    });
+  }, [error, step]);
 
   if (restoring) {
     return (
@@ -133,7 +160,14 @@ function App() {
   }
 
   if (step === "pat") {
-    return <PatLogin onAuthenticated={() => setStep("project")} />;
+    return (
+      <MicrosoftLogin
+        initialError={loginError}
+        onSuccess={() => {
+          setStep("project");
+        }}
+      />
+    );
   }
 
   if (step === "project") {
@@ -141,8 +175,9 @@ function App() {
       <ProjectSelector
         onConfigured={() => setStep("board")}
         onBack={() => {
-          clearPat();
-          setStep("pat");
+          void logout().finally(() => {
+            setStep("pat");
+          });
         }}
       />
     );
@@ -162,6 +197,12 @@ function App() {
       sidebarOpen={sidebarOpen}
       onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
       onChangeProject={() => setStep("project")}
+      onSignOut={() => {
+        void logout().finally(() => {
+          clearConfig();
+          setStep("pat");
+        });
+      }}
     />
   );
 }

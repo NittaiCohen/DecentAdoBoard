@@ -74,43 +74,6 @@ pub struct AdoIterationAttributes {
     pub finish_date: Option<String>,
 }
 
-// --- PAT generation API types ---
-
-#[derive(Debug, Deserialize)]
-pub struct AzAccessTokenOutput {
-    #[serde(rename = "accessToken")]
-    pub access_token: String,
-}
-
-#[derive(Debug, Serialize)]
-pub struct PatCreateRequest {
-    #[serde(rename = "displayName")]
-    pub display_name: String,
-    pub scope: String,
-    #[serde(rename = "validTo")]
-    pub valid_to: String,
-    #[serde(rename = "allOrgs")]
-    pub all_orgs: bool,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PatCreateResponse {
-    #[serde(rename = "patTokenError")]
-    pub pat_token_error: Option<String>,
-    #[serde(rename = "patToken")]
-    pub pat_token: Option<PatTokenInfo>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct PatTokenInfo {
-    pub token: Option<String>,
-    #[serde(rename = "displayName")]
-    pub display_name: Option<String>,
-    #[serde(rename = "validTo")]
-    pub valid_to: Option<String>,
-    pub scope: Option<String>,
-}
-
 // --- Org/Project/Team/Area listing types ---
 
 #[derive(Debug, Deserialize)]
@@ -225,14 +188,6 @@ pub struct BoardData {
     pub iterations: Vec<Iteration>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PatGenerationResult {
-    pub pat: String,
-    pub organization: String,
-    pub display_name: String,
-    pub valid_to: String,
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -270,8 +225,7 @@ mod tests {
         assert_eq!(serialized["children"], json!([8, 9]));
 
         // Round-trip still works
-        let deserialized: WorkItem =
-            serde_json::from_value(serialized).unwrap();
+        let deserialized: WorkItem = serde_json::from_value(serialized).unwrap();
         assert_eq!(deserialized, original);
     }
 
@@ -303,10 +257,16 @@ mod tests {
         assert_eq!(item.fields.title, "Fix login");
         assert_eq!(item.fields.state, "Active");
         assert_eq!(item.fields.work_item_type, "Bug");
-        assert_eq!(item.fields.assigned_to.unwrap().display_name, "Ada Lovelace");
+        assert_eq!(
+            item.fields.assigned_to.unwrap().display_name,
+            "Ada Lovelace"
+        );
         assert_eq!(item.fields.iteration_path, "Project\\Sprint 1");
         assert_eq!(item.fields.area_path, "Project\\Area");
-        assert_eq!(item.relations.unwrap()[0].rel, "System.LinkTypes.Dependency-Forward");
+        assert_eq!(
+            item.relations.unwrap()[0].rel,
+            "System.LinkTypes.Dependency-Forward"
+        );
     }
 
     #[test]
@@ -344,7 +304,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(relation.rel, "System.LinkTypes.Hierarchy-Reverse");
-        assert_eq!(relation.url, "https://dev.azure.com/org/project/_apis/wit/workItems/77");
+        assert_eq!(
+            relation.url,
+            "https://dev.azure.com/org/project/_apis/wit/workItems/77"
+        );
     }
 
     #[test]
@@ -367,7 +330,10 @@ mod tests {
         .unwrap();
 
         assert_eq!(with_attributes.id, "iteration-1");
-        assert_eq!(with_attributes.attributes.unwrap().start_date.as_deref(), Some("2025-01-06T00:00:00Z"));
+        assert_eq!(
+            with_attributes.attributes.unwrap().start_date.as_deref(),
+            Some("2025-01-06T00:00:00Z")
+        );
         assert!(without_attributes.attributes.is_none());
     }
 
@@ -395,38 +361,5 @@ mod tests {
         assert_eq!(project.name, "DecentAdoBoard");
         assert_eq!(team.id, "team-123");
         assert_eq!(team.name, "Platform");
-    }
-
-    #[test]
-    fn pat_create_response_with_error() {
-        let response: PatCreateResponse = serde_json::from_value(json!({
-            "patTokenError": "token creation failed",
-            "patToken": null
-        }))
-        .unwrap();
-
-        assert_eq!(response.pat_token_error.as_deref(), Some("token creation failed"));
-        assert!(response.pat_token.is_none());
-    }
-
-    #[test]
-    fn pat_create_response_with_token() {
-        let response: PatCreateResponse = serde_json::from_value(json!({
-            "patTokenError": null,
-            "patToken": {
-                "token": "secret-token",
-                "displayName": "DecentAdoBoard PAT",
-                "validTo": "2025-12-31T00:00:00Z",
-                "scope": "vso.work"
-            }
-        }))
-        .unwrap();
-
-        let token = response.pat_token.unwrap();
-        assert!(response.pat_token_error.is_none());
-        assert_eq!(token.token.as_deref(), Some("secret-token"));
-        assert_eq!(token.display_name.as_deref(), Some("DecentAdoBoard PAT"));
-        assert_eq!(token.valid_to.as_deref(), Some("2025-12-31T00:00:00Z"));
-        assert_eq!(token.scope.as_deref(), Some("vso.work"));
     }
 }
