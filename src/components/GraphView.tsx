@@ -42,7 +42,7 @@ export default function GraphView({ boardData }: GraphViewProps) {
 }
 
 const SCROLL_ZOOM_SENSITIVITY = 0.01;
-const MIN_ZOOM = 0.1;
+const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 2;
 const ZOOM_FACTOR = 1.25;
 
