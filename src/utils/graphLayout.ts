@@ -1033,20 +1033,44 @@ function layoutCollapsedMultiSprint(
   return collapsedHeight;
 }
 
-/** Advance the Y cursor for all columns spanned by a multi-sprint parent after placing it. */
+/** Advance the Y cursor for all columns spanned by a multi-sprint parent after placing it.
+ *
+ * Fills the entire contiguous effCol range [minC, maxC] rather than only the
+ * specific sprint columns in descPaths. Without this, a gap between two
+ * non-consecutive descendant sprints leaves intermediate columns at their
+ * initial Y, causing another multi-sprint parent whose home sprint falls in
+ * that gap to be placed at y=TOP_OFFSET and visually overlap the first parent.
+ */
 function advanceSpannedColumns(
   descPaths: Set<string>,
   newY: number,
   columnCurrentY: Map<number, number>,
   plan: ColumnPlan,
 ): void {
+  let minC = Infinity;
+  let maxC = -Infinity;
+
   for (const p of descPaths) {
-    const startC = plan.sprintStartCol.get(p) ?? 0;
-    const width = plan.sprintWidths.get(p) ?? 1;
-    for (let c = startC; c < startC + width; c++) {
-      const existingY = columnCurrentY.get(c) ?? TOP_OFFSET;
-      columnCurrentY.set(c, Math.max(existingY, newY));
+    const startC = plan.sprintStartCol.get(p);
+    if (startC === undefined) {
+      continue;
     }
+    const width = plan.sprintWidths.get(p) ?? 1;
+    if (startC < minC) {
+      minC = startC;
+    }
+    if (startC + width - 1 > maxC) {
+      maxC = startC + width - 1;
+    }
+  }
+
+  if (minC === Infinity) {
+    return;
+  }
+
+  for (let c = minC; c <= maxC; c++) {
+    const existingY = columnCurrentY.get(c) ?? TOP_OFFSET;
+    columnCurrentY.set(c, Math.max(existingY, newY));
   }
 }
 

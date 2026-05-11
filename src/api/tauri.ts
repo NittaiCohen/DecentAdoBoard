@@ -69,3 +69,8 @@ export async function updateWorkItemState(workItemId: number, newState: string):
 export async function getWorkItemTypeStates(workItemType: string): Promise<WorkItemTypeState[]> {
   return await invoke<WorkItemTypeState[]>("get_work_item_type_states", { workItemType });
 }
+
+/** Write debug data to a JSON file in the app data directory. Returns the file path written. */
+export async function writeDebugLog(data: string): Promise<string> {
+  return await invoke<string>("write_debug_log", { data });
+}

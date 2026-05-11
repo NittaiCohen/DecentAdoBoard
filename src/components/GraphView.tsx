@@ -1,16 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
-  ReactFlow,
   Background,
-  Controls,
-  ControlButton,
   BackgroundVariant,
-  useNodesState,
-  useEdgesState,
-  useReactFlow,
-  ReactFlowProvider,
-  type NodeTypes,
+  ControlButton,
+  Controls,
   type Node,
+  type NodeTypes,
+  ReactFlow,
+  ReactFlowProvider,
+  useEdgesState,
+  useNodesState,
+  useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 import type { BoardData, WorkItem } from "../types";
@@ -75,6 +75,33 @@ function GraphViewInner({ boardData }: GraphViewProps) {
     setNodes(() => layoutNodes);
     setEdges(layoutEdges);
   }, [layoutNodes, layoutEdges, setNodes, setEdges]);
+
+  // // Uncomment the body and import writeDebugLog from "../api/tauri" to re-enable layout snapshots.
+  // function debugCaptureLayoutSnapshot(nodes: Node[], data: BoardData): string {
+  //   const debugNodes = nodes.map((n) => {
+  //     const nodeData = n.data;
+  //     const wi = nodeData.workItem as Record<string, unknown> | undefined;
+  //     const title =
+  //       typeof nodeData.label === "string"
+  //         ? nodeData.label
+  //         : typeof wi?.title === "string"
+  //           ? wi.title
+  //           : typeof nodeData.iterationName === "string"
+  //             ? nodeData.iterationName
+  //             : "";
+  //     return {
+  //       id: n.id,
+  //       type: n.type ?? "unknown",
+  //       title,
+  //       x: Math.round(n.position.x),
+  //       y: Math.round(n.position.y),
+  //       w: typeof n.style?.width === "number" ? Math.round(n.style.width) : null,
+  //       h: typeof n.style?.height === "number" ? Math.round(n.style.height) : null,
+  //       parentId: n.parentId ?? null,
+  //     };
+  //   });
+  //   return JSON.stringify({ ts: new Date().toISOString(), iterations: data.iterations.length, nodes: debugNodes }, null, 2);
+  // }
 
   const wiMapRef = useRef<Map<number, WorkItem>>(new Map());
   useEffect(() => {

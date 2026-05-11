@@ -40,6 +40,7 @@ pub fn run() {
             commands::list_area_paths,
             ado_writes::update_work_item_state,
             ado_writes::get_work_item_type_states,
+            commands::write_debug_log,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

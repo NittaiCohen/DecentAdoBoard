@@ -270,3 +270,11 @@ fn flatten_area_paths(node: &ClassificationNodeResponse, prefix: &str, paths: &m
         }
     }
 }
+
+#[tauri::command]
+pub async fn write_debug_log(state: State<'_, AppState>, data: String) -> Result<String, String> {
+    let path = state.data_dir.join("layout_debug.json");
+    std::fs::create_dir_all(&state.data_dir).map_err(|e| format!("mkdir error: {e}"))?;
+    std::fs::write(&path, &data).map_err(|e| format!("write error: {e}"))?;
+    Ok(path.to_string_lossy().into_owned())
+}
