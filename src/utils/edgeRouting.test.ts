@@ -161,6 +161,43 @@ describe("routeLeftToRightEdge", () => {
     const path = routeLeftToRightEdge({ x: 0, y: 0 }, { x: 400, y: 200 }, "elbow-destY", 0);
     expect(path).toMatch(/^M /);
   });
+
+  describe("no consecutive duplicate waypoints", () => {
+    const hasConsecutiveDuplicates = (pts: Point[]): boolean =>
+      pts.some((p, i) => i > 0 && p.x === pts[i - 1].x && p.y === pts[i - 1].y);
+
+    it("elbow-destY at same Y produces no duplicates", () => {
+      const path = routeLeftToRightEdge({ x: 0, y: 100 }, { x: 400, y: 100 }, "elbow-destY", 0);
+      expect(hasConsecutiveDuplicates(parsePath(path))).toBe(false);
+      expect(path).not.toContain("NaN");
+    });
+
+    it("elbow-srcY at same Y produces no duplicates", () => {
+      const path = routeLeftToRightEdge({ x: 0, y: 100 }, { x: 400, y: 100 }, "elbow-srcY", 0);
+      expect(hasConsecutiveDuplicates(parsePath(path))).toBe(false);
+      expect(path).not.toContain("NaN");
+    });
+
+    it("staircase at same Y produces no duplicates", () => {
+      const path = routeLeftToRightEdge({ x: 0, y: 100 }, { x: 400, y: 100 }, "staircase", 0);
+      expect(hasConsecutiveDuplicates(parsePath(path))).toBe(false);
+      expect(path).not.toContain("NaN");
+    });
+
+    it("elbow-destY at different Y still works", () => {
+      const path = routeLeftToRightEdge({ x: 0, y: 100 }, { x: 400, y: 300 }, "elbow-destY", 0);
+      expect(hasConsecutiveDuplicates(parsePath(path))).toBe(false);
+      expect(path).not.toContain("NaN");
+    });
+
+    it("path reaches the destination point", () => {
+      const path = routeLeftToRightEdge({ x: 0, y: 100 }, { x: 400, y: 100 }, "elbow-destY", 0);
+      const points = parsePath(path);
+      const last = points[points.length - 1];
+      expect(last.x).toBe(400);
+      expect(last.y).toBe(100);
+    });
+  });
 });
 
 describe("routeRightToLeftEdge", () => {

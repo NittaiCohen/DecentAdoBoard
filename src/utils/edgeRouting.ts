@@ -269,24 +269,32 @@ export function routeLeftToRightEdge(
   laneOffset: number,
 ): string {
   const waypoints: Point[] = [source];
+  // Push only if the point differs from the last waypoint — avoids
+  // duplicate consecutive points that cause NaN in buildRoundedPath.
+  const push = (p: Point) => {
+    const last = waypoints[waypoints.length - 1];
+    if (last.x !== p.x || last.y !== p.y) {
+      waypoints.push(p);
+    }
+  };
 
   if (strategy === "elbow-destY") {
     const pivotX = source.x + EXIT_STUB_PX;
     const pivotY = destination.y + laneOffset;
-    waypoints.push({ x: pivotX, y: source.y });
-    waypoints.push({ x: pivotX, y: pivotY });
-    waypoints.push({ x: destination.x, y: pivotY });
+    push({ x: pivotX, y: source.y });
+    push({ x: pivotX, y: pivotY });
+    push({ x: destination.x, y: pivotY });
     // When laneOffset shifts the approach away from the handle, add a final
     // vertical segment to connect back to the actual destination handle.
     if (pivotY !== destination.y) {
-      waypoints.push(destination);
+      push(destination);
     }
   } else if (strategy === "elbow-srcY") {
     const pivotX = destination.x - EXIT_STUB_PX;
     const pivotY = source.y + laneOffset;
-    waypoints.push({ x: pivotX, y: pivotY });
-    waypoints.push({ x: pivotX, y: destination.y });
-    waypoints.push(destination);
+    push({ x: pivotX, y: pivotY });
+    push({ x: pivotX, y: destination.y });
+    push(destination);
   } else {
     // staircase
     const N = Math.max(
@@ -297,15 +305,15 @@ export function routeLeftToRightEdge(
     for (let k = 0; k < N; k++) {
       const gapCenterX = source.x + EXIT_STUB_PX + k * SUB_COLUMN_STRIDE;
       const stepY = source.y + ((k + 1) / N) * (destination.y - source.y) + laneOffset;
-      waypoints.push({ x: gapCenterX, y: prevY });
-      waypoints.push({ x: gapCenterX, y: stepY });
+      push({ x: gapCenterX, y: prevY });
+      push({ x: gapCenterX, y: stepY });
       prevY = stepY;
     }
-    waypoints.push({ x: destination.x, y: prevY });
+    push({ x: destination.x, y: prevY });
     // When laneOffset shifts the final step away from the handle, add a final
     // vertical segment to connect back to the actual destination handle.
     if (prevY !== destination.y) {
-      waypoints.push(destination);
+      push(destination);
     }
   }
 

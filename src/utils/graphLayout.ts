@@ -1337,8 +1337,9 @@ export function buildNodePositions(
         absY += parent.position.y;
       }
     }
+    const defaultWidth = node.parentId ? CHILD_WIDTH : SUB_COLUMN_WIDTH;
     const width =
-      node.measured?.width ?? (node.style?.width ? Number(node.style.width) : SUB_COLUMN_WIDTH);
+      node.measured?.width ?? (node.style?.width ? Number(node.style.width) : defaultWidth);
     positions.set(node.id, { x: absX, y: absY, width });
   });
   return positions;
