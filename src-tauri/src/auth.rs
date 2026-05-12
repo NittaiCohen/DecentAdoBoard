@@ -1,12 +1,14 @@
 use std::collections::HashMap;
 use std::time::Duration;
 
+use const_format::formatcp;
 use oauth2::{CsrfToken, PkceCodeChallenge};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-pub const CLIENT_ID: &str = "91f5dbd1-2a6b-438f-a561-5cd8aa49c9be";
-const AUTH_URL: &str = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
-const TOKEN_URL: &str = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+pub const CLIENT_ID: &str = "ce5adad2-f8f2-4a19-b494-422225cf1d25";
+const TENANT_ID: &str = "72f988bf-86f1-41af-91ab-2d7cd011db47";
+const AUTH_URL: &str = formatcp!("https://login.microsoftonline.com/{}/oauth2/v2.0/authorize", TENANT_ID);
+const TOKEN_URL: &str = formatcp!("https://login.microsoftonline.com/{}/oauth2/v2.0/token", TENANT_ID);
 const ADO_SCOPE: &str = "499b84ac-1321-427f-aa17-267ca6975798/user_impersonation offline_access";
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
 
