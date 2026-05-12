@@ -9,4 +9,4 @@ export {
   type WorkItemTypeState,
 } from "./ado";
 
-export { type RequiredSome } from "./utils";
+export { type RequiredSome, type Point } from "./utils";

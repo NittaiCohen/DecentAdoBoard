@@ -18,3 +18,8 @@
 export type RequiredSome<T, K extends keyof T> = Omit<T, K> & {
   [P in K]: NonNullable<T[P]>;
 };
+
+export interface Point {
+  x: number;
+  y: number;
+}

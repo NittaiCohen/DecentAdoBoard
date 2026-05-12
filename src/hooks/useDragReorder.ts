@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
+import type React from "react";
 import { isNil } from "lodash-es";
 import type { Node } from "@xyflow/react";
 import type { WorkItem } from "../types";
@@ -488,6 +489,7 @@ type SetNodes = (updater: (prev: Node[]) => Node[]) => void;
 export function useDragReorder(
   setNodes: SetNodes,
   wiMapRef: React.RefObject<Map<number, WorkItem>>,
+  onDragSettled?: (finalNodes: Node[]) => void,
 ) {
   const dragRef = useRef<DragState | null>(null);
   const rafRef = useRef(0);
@@ -530,10 +532,14 @@ export function useDragReorder(
     (_event: React.MouseEvent, draggedNode: Node) => {
       cancelAnimationFrame(rafRef.current);
       const state = dragRef.current;
-      setNodes((prev) => buildDragStopNodes(prev, state, draggedNode));
+      setNodes((prev) => {
+        const finalNodes = buildDragStopNodes(prev, state, draggedNode);
+        onDragSettled?.(finalNodes);
+        return finalNodes;
+      });
       dragRef.current = null;
     },
-    [setNodes],
+    [setNodes, onDragSettled],
   );
 
   return { handleNodeDragStart, handleNodeDrag, handleNodeDragStop };

@@ -1,20 +1,26 @@
-import type { Edge } from "@xyflow/react";
-import { MarkerType } from "@xyflow/react";
+import { MarkerType, type Edge } from "@xyflow/react";
 import { isNil } from "lodash-es";
 import type { BoardData, Iteration, WorkItem } from "../types";
 import type { WorkItemNodeData } from "../components/WorkItemNode";
 import type { SprintDividerData } from "../components/SprintDivider";
 import type { ParentGroupData } from "../components/ParentGroup";
 import { computeActionableSet } from "./actionable";
+import { assignLaneOffsets } from "./edgeRouting";
 
 export const NODE_HEIGHT = 80;
-const NODE_GAP_X = 60;
+export const NODE_GAP_X = 60;
 export const NODE_GAP_Y = 20;
 const SPRINT_PADDING = 40;
 const MIN_COLUMN_WIDTH = 1200;
 const TOP_OFFSET = 60;
-const SUB_COLUMN_WIDTH = 280;
-const SUB_COLUMN_STRIDE = SUB_COLUMN_WIDTH + NODE_GAP_X;
+export const SUB_COLUMN_WIDTH = 280;
+export const SUB_COLUMN_STRIDE = SUB_COLUMN_WIDTH + NODE_GAP_X;
+
+export interface NodePosition {
+  x: number;
+  y: number;
+  width: number;
+}
 
 type AnyNodeData = WorkItemNodeData | SprintDividerData | ParentGroupData | DragGhostData;
 
@@ -1236,10 +1242,8 @@ function buildDependencyEdges(
           id: `edge-${workItem.id}-${succId}`,
           source: sourceId,
           target: targetId,
-          type: "smoothstep",
-          animated: false,
-          style: { stroke: "#6b7280", strokeWidth: 1.5 },
-          markerEnd: { type: MarkerType.ArrowClosed, color: "#6b7280" },
+          type: "dependency",
+          markerEnd: { type: MarkerType.ArrowClosed, color: "#000" },
         });
       }
     }
@@ -1303,5 +1307,39 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   createSprintDividers(iterInfo, plan, columnCurrentY, nodes);
   buildDependencyEdges(work_items, workItemMap, nodeIdMap, edges);
 
-  return { nodes, edges };
+  const nodePositions = buildNodePositions(nodes);
+  const routedEdges = assignLaneOffsets(edges, nodePositions);
+
+  return { nodes, edges: routedEdges };
+}
+
+/** Builds a NodePosition map resolving child nodes to absolute coordinates. */
+export function buildNodePositions(
+  nodes: readonly {
+    id: string;
+    position: { x: number; y: number };
+    parentId?: string;
+    style?: { width?: string | number };
+    measured?: { width?: number };
+  }[],
+): Map<string, NodePosition> {
+  const nodeById = new Map<string, (typeof nodes)[number]>();
+  nodes.forEach((node) => nodeById.set(node.id, node));
+
+  const positions = new Map<string, NodePosition>();
+  nodes.forEach((node) => {
+    let absX = node.position.x;
+    let absY = node.position.y;
+    if (node.parentId) {
+      const parent = nodeById.get(node.parentId);
+      if (parent) {
+        absX += parent.position.x;
+        absY += parent.position.y;
+      }
+    }
+    const width =
+      node.measured?.width ?? (node.style?.width ? Number(node.style.width) : SUB_COLUMN_WIDTH);
+    positions.set(node.id, { x: absX, y: absY, width });
+  });
+  return positions;
 }

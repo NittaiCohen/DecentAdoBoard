@@ -4,6 +4,7 @@ import {
   BackgroundVariant,
   ControlButton,
   Controls,
+  type EdgeTypes,
   type Node,
   type NodeTypes,
   ReactFlow,
@@ -18,7 +19,9 @@ import WorkItemNodeComponent from "./WorkItemNode";
 import SprintDividerComponent from "./SprintDivider";
 import ParentGroupComponent from "./ParentGroup";
 import DragGhostComponent from "./DragGhost";
-import { buildGraphLayout } from "../utils/graphLayout";
+import DependencyEdge from "./DependencyEdge";
+import { buildGraphLayout, buildNodePositions } from "../utils/graphLayout";
+import { assignLaneOffsets } from "../utils/edgeRouting";
 import { useDragReorder } from "../hooks/useDragReorder";
 import { useExpandedParents } from "../hooks/useExpandedParents";
 
@@ -31,6 +34,10 @@ const nodeTypes: NodeTypes = {
   sprintDivider: SprintDividerComponent,
   parentGroup: ParentGroupComponent,
   dragGhost: DragGhostComponent,
+};
+
+const edgeTypes: EdgeTypes = {
+  dependency: DependencyEdge,
 };
 
 export default function GraphView({ boardData }: GraphViewProps) {
@@ -114,9 +121,18 @@ function GraphViewInner({ boardData }: GraphViewProps) {
     wiMapRef.current = map;
   }, [boardData]);
 
+  const handleDragSettled = useCallback(
+    (finalNodes: Node[]) => {
+      const nodePositions = buildNodePositions(finalNodes);
+      setEdges((prev) => assignLaneOffsets(prev, nodePositions));
+    },
+    [setEdges],
+  );
+
   const { handleNodeDragStart, handleNodeDrag, handleNodeDragStop } = useDragReorder(
     setNodes,
     wiMapRef,
+    handleDragSettled,
   );
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -215,6 +231,7 @@ function GraphViewInner({ boardData }: GraphViewProps) {
         onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleNodeDragStop}
         nodeTypes={nodeTypes}
+        edgeTypes={edgeTypes}
         fitView
         proOptions={{ hideAttribution: true }}
         minZoom={MIN_ZOOM}
