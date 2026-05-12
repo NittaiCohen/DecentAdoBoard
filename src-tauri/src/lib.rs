@@ -1,3 +1,5 @@
+#![deny(warnings)]
+
 mod ado_client;
 mod ado_writes;
 mod audit_log;

@@ -53,27 +53,6 @@ pub struct AdoRelation {
     pub url: String,
 }
 
-#[derive(Debug, Deserialize)]
-pub struct IterationsResponse {
-    pub value: Vec<AdoIteration>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AdoIteration {
-    pub id: String,
-    pub name: String,
-    pub path: String,
-    pub attributes: Option<AdoIterationAttributes>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct AdoIterationAttributes {
-    #[serde(rename = "startDate")]
-    pub start_date: Option<String>,
-    #[serde(rename = "finishDate")]
-    pub finish_date: Option<String>,
-}
-
 // --- Org/Project/Team/Area listing types ---
 
 #[derive(Debug, Deserialize)]
@@ -86,6 +65,7 @@ pub struct AccountsResponse {
     pub value: Option<Vec<AccountInfo>>,
     // Some API versions return a flat array
     #[serde(default)]
+    #[allow(dead_code)]
     pub count: Option<i64>,
 }
 
@@ -122,6 +102,7 @@ pub struct TeamInfo {
 #[derive(Debug, Deserialize)]
 pub struct ClassificationNodeResponse {
     pub name: String,
+    #[allow(dead_code)]
     pub path: Option<String>,
     pub children: Option<Vec<ClassificationNodeResponse>>,
 }
@@ -310,32 +291,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn iteration_with_and_without_attributes_deserializes() {
-        let with_attributes: AdoIteration = serde_json::from_value(json!({
-            "id": "iteration-1",
-            "name": "Sprint 1",
-            "path": "Project\\Sprint 1",
-            "attributes": {
-                "startDate": "2025-01-06T00:00:00Z",
-                "finishDate": "2025-01-19T00:00:00Z"
-            }
-        }))
-        .unwrap();
-        let without_attributes: AdoIteration = serde_json::from_value(json!({
-            "id": "iteration-2",
-            "name": "Backlog",
-            "path": "Project\\Backlog"
-        }))
-        .unwrap();
 
-        assert_eq!(with_attributes.id, "iteration-1");
-        assert_eq!(
-            with_attributes.attributes.unwrap().start_date.as_deref(),
-            Some("2025-01-06T00:00:00Z")
-        );
-        assert!(without_attributes.attributes.is_none());
-    }
 
     #[test]
     fn account_project_and_team_info_deserialize() {
