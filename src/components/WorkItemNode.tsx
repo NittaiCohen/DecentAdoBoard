@@ -27,7 +27,7 @@ function WorkItemHeader({ data }: { data: WorkItemNodeData }) {
       <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">{`#${workItem.id}`}</span>
       <StateDropdown
         workItemId={workItem.id}
-        workItemType={workItem.work_item_type}
+        workItemType={workItem.type}
         currentState={workItem.state}
       />
       {isParent && (
@@ -48,7 +48,7 @@ function WorkItemHeader({ data }: { data: WorkItemNodeData }) {
 
 function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
   const { workItem, isActionable } = data;
-  const colorClass = TYPE_COLORS[workItem.work_item_type] ?? DEFAULT_TYPE_COLOR;
+  const colorClass = TYPE_COLORS[workItem.type] ?? DEFAULT_TYPE_COLOR;
   const actionableRing = isActionable ? "ring-2 ring-green-500 dark:ring-green-400" : "";
 
   return (

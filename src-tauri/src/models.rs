@@ -137,6 +137,7 @@ pub struct WorkItem {
     pub id: i64,
     pub title: String,
     pub state: String,
+    #[serde(rename = "type")]
     pub work_item_type: String,
     pub assigned_to: Option<String>,
     pub iteration_path: String,
@@ -196,7 +197,7 @@ mod tests {
         assert_eq!(serialized["id"], 42);
         assert_eq!(serialized["title"], "Implement tests");
         assert_eq!(serialized["state"], "Active");
-        assert_eq!(serialized["work_item_type"], "Task");
+        assert_eq!(serialized["type"], "Task");
         assert_eq!(serialized["assigned_to"], "Nittai Cohen");
         assert_eq!(serialized["iteration_path"], "Project\\Sprint 1");
         assert_eq!(serialized["area_path"], "Project\\Area");

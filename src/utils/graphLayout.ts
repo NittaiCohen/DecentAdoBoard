@@ -394,7 +394,7 @@ function renderExpandedGroup(
     data: {
       label: workItem.title,
       workItemId: workItem.id,
-      workItemType: workItem.work_item_type,
+      workItemType: workItem.type,
       state: workItem.state,
       childCount: workItem.children.length,
       doneChildCount,
@@ -402,7 +402,7 @@ function renderExpandedGroup(
       height: layout.height,
       onToggleExpand: undefined,
     },
-    draggable: !MULTI_SPRINT_TYPES.has(workItem.work_item_type),
+    draggable: !MULTI_SPRINT_TYPES.has(workItem.type),
     style: { width: layout.width, height: layout.height },
   };
   if (reactFlowParentId) {
@@ -507,7 +507,7 @@ function identifyMultiSprintParents(
     if (workItem.parent_id && workItemMap.has(workItem.parent_id)) {
       continue;
     }
-    if (!MULTI_SPRINT_TYPES.has(workItem.work_item_type)) {
+    if (!MULTI_SPRINT_TYPES.has(workItem.type)) {
       continue;
     }
     if (workItem.children.length === 0) {
@@ -1075,7 +1075,7 @@ function layoutExpandedMultiSprint(
     data: {
       label: workItem.title,
       workItemId: workItem.id,
-      workItemType: workItem.work_item_type,
+      workItemType: workItem.type,
       state: workItem.state,
       childCount: workItem.children.length,
       doneChildCount,
@@ -1122,7 +1122,7 @@ function layoutCollapsedMultiSprint(
     data: {
       label: workItem.title,
       workItemId: workItem.id,
-      workItemType: workItem.work_item_type,
+      workItemType: workItem.type,
       state: workItem.state,
       childCount: workItem.children.length,
       doneChildCount,

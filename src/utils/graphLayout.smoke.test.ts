@@ -21,7 +21,7 @@ function wi(overrides: Partial<WorkItem> & { id: number }): WorkItem {
   return {
     title: `Item ${overrides.id}`,
     state: "New",
-    work_item_type: "Task",
+    type: "Task",
     assigned_to: null,
     iteration_path: sprint1.path,
     area_path: "Area",
@@ -77,7 +77,7 @@ describe("buildGraphLayout smoke", () => {
 
   it("renders an expanded multi-sprint parent as a group with visible children nested under it", () => {
     const items = [
-      wi({ id: 1, title: "Parent", work_item_type: "Feature", children: [2, 3] }),
+      wi({ id: 1, title: "Parent", type: "Feature", children: [2, 3] }),
       wi({ id: 2, parent_id: 1, iteration_path: sprint1.path }),
       wi({ id: 3, parent_id: 1, iteration_path: sprint2.path }),
     ];
@@ -102,7 +102,7 @@ describe("buildGraphLayout smoke", () => {
 
   it("renders a collapsed multi-sprint parent without visible child nodes", () => {
     const items = [
-      wi({ id: 1, title: "Parent", work_item_type: "Feature", children: [2, 3] }),
+      wi({ id: 1, title: "Parent", type: "Feature", children: [2, 3] }),
       wi({ id: 2, parent_id: 1, iteration_path: sprint1.path }),
       wi({ id: 3, parent_id: 1, iteration_path: sprint2.path }),
     ];
@@ -118,7 +118,7 @@ describe("buildGraphLayout smoke", () => {
 
   it("is deterministic for identical input and produces expected structure", () => {
     const items = [
-      wi({ id: 1, work_item_type: "Feature", children: [2, 3] }),
+      wi({ id: 1, type: "Feature", children: [2, 3] }),
       wi({ id: 2, parent_id: 1, iteration_path: sprint1.path, successors: [3] }),
       wi({ id: 3, parent_id: 1, iteration_path: sprint2.path, predecessors: [2] }),
     ];

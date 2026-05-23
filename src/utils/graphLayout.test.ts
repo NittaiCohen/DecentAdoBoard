@@ -294,7 +294,7 @@ describe("buildGraphLayout smoke", () => {
      *  Children nested under parent group
      */
     const items = [
-      generateWorkItem({ id: 1, title: "Parent", work_item_type: "Feature", children: [2, 3] }),
+      generateWorkItem({ id: 1, title: "Parent", type: "Feature", children: [2, 3] }),
       generateWorkItem({ id: 2, parent_id: 1, iteration_path: sprint1.path }),
       generateWorkItem({ id: 3, parent_id: 1, iteration_path: sprint2.path }),
     ];
@@ -322,7 +322,7 @@ describe("buildGraphLayout smoke", () => {
      *  Children 2, 3 hidden
      */
     const items = [
-      generateWorkItem({ id: 1, title: "Parent", work_item_type: "Feature", children: [2, 3] }),
+      generateWorkItem({ id: 1, title: "Parent", type: "Feature", children: [2, 3] }),
       generateWorkItem({ id: 2, parent_id: 1, iteration_path: sprint1.path }),
       generateWorkItem({ id: 3, parent_id: 1, iteration_path: sprint2.path }),
     ];
@@ -344,7 +344,7 @@ describe("buildGraphLayout smoke", () => {
      *  Same input → same output on every call
      */
     const items = [
-      generateWorkItem({ id: 1, work_item_type: "Feature", children: [2, 3] }),
+      generateWorkItem({ id: 1, type: "Feature", children: [2, 3] }),
       generateWorkItem({ id: 2, parent_id: 1, iteration_path: sprint1.path, successors: [3] }),
       generateWorkItem({ id: 3, parent_id: 1, iteration_path: sprint2.path, predecessors: [2] }),
     ];
@@ -364,7 +364,7 @@ describe("buildGraphLayout smoke", () => {
      *  Group node + child nodes + edge + 2 sprint dividers
      */
     const items = [
-      generateWorkItem({ id: 1, work_item_type: "Feature", children: [2, 3] }),
+      generateWorkItem({ id: 1, type: "Feature", children: [2, 3] }),
       generateWorkItem({ id: 2, parent_id: 1, iteration_path: sprint1.path, successors: [3] }),
       generateWorkItem({ id: 3, parent_id: 1, iteration_path: sprint2.path, predecessors: [2] }),
     ];
@@ -527,7 +527,7 @@ describe("expanded parent multi-column layout", () => {
     const parent = generateWorkItem({
       id: 1,
       children: [2, 3],
-      work_item_type: "Product Backlog Item",
+      type: "Product Backlog Item",
     });
     const child1 = generateWorkItem({ id: 2, parent_id: 1, successors: [3] });
     const child2 = generateWorkItem({ id: 3, parent_id: 1, predecessors: [2] });
@@ -556,7 +556,7 @@ describe("expanded parent multi-column layout", () => {
     const parent = generateWorkItem({
       id: 1,
       children: [2, 3],
-      work_item_type: "Product Backlog Item",
+      type: "Product Backlog Item",
     });
     const child1 = generateWorkItem({ id: 2, parent_id: 1 });
     const child2 = generateWorkItem({ id: 3, parent_id: 1 });
@@ -586,7 +586,7 @@ describe("expanded parent multi-column layout", () => {
     const parent = generateWorkItem({
       id: 1,
       children: [2, 3, 4],
-      work_item_type: "Product Backlog Item",
+      type: "Product Backlog Item",
     });
     const child1 = generateWorkItem({ id: 2, parent_id: 1 });
     const child2 = generateWorkItem({ id: 3, parent_id: 1, successors: [4] });
@@ -616,14 +616,14 @@ describe("expanded parent multi-column layout", () => {
     const parent = generateWorkItem({
       id: 1,
       children: [2, 3],
-      work_item_type: "Product Backlog Item",
+      type: "Product Backlog Item",
     });
     const child1 = generateWorkItem({ id: 2, parent_id: 1, successors: [3] });
     const child2 = generateWorkItem({ id: 3, parent_id: 1, predecessors: [2] });
 
     const singleCol = buildGraphLayout(
       board([
-        generateWorkItem({ id: 10, children: [11, 12], work_item_type: "Product Backlog Item" }),
+        generateWorkItem({ id: 10, children: [11, 12], type: "Product Backlog Item" }),
         generateWorkItem({ id: 11, parent_id: 10 }),
         generateWorkItem({ id: 12, parent_id: 10 }),
       ]),
@@ -655,7 +655,7 @@ describe("expanded parent multi-column layout", () => {
     const parent = generateWorkItem({
       id: 1,
       children: [2, 3, 4],
-      work_item_type: "Product Backlog Item",
+      type: "Product Backlog Item",
     });
     const a = generateWorkItem({ id: 2, parent_id: 1, successors: [3] });
     const b = generateWorkItem({ id: 3, parent_id: 1, predecessors: [2], successors: [4] });
@@ -689,13 +689,13 @@ describe("expanded parent multi-column layout", () => {
     const grandparent = generateWorkItem({
       id: 1,
       children: [2],
-      work_item_type: "Product Backlog Item",
+      type: "Product Backlog Item",
     });
     const parent = generateWorkItem({
       id: 2,
       parent_id: 1,
       children: [3, 4],
-      work_item_type: "Product Backlog Item",
+      type: "Product Backlog Item",
     });
     const grandchild1 = generateWorkItem({ id: 3, parent_id: 2, successors: [4] });
     const grandchild2 = generateWorkItem({ id: 4, parent_id: 2, predecessors: [3] });
@@ -727,7 +727,7 @@ describe("sprint auto-widening for wide expanded groups", () => {
     const parent = generateWorkItem({
       id: 1,
       children: [2, 3, 4, 5, 6],
-      work_item_type: "Product Backlog Item",
+      type: "Product Backlog Item",
       iteration_path: sprint1.path,
     });
     const a = generateWorkItem({
@@ -805,7 +805,7 @@ describe("sprint auto-widening for wide expanded groups", () => {
     const parent = generateWorkItem({
       id: 1,
       children: [2, 3],
-      work_item_type: "Product Backlog Item",
+      type: "Product Backlog Item",
     });
     const child1 = generateWorkItem({ id: 2, parent_id: 1, successors: [3] });
     const child2 = generateWorkItem({ id: 3, parent_id: 1, predecessors: [2] });
@@ -835,14 +835,14 @@ describe("sprint auto-widening for wide expanded groups", () => {
     const feature = generateWorkItem({
       id: 100,
       children: [101, 110],
-      work_item_type: "Feature",
+      type: "Feature",
       iteration_path: sprint1.path,
     });
     const pbi = generateWorkItem({
       id: 101,
       parent_id: 100,
       children: [102, 103, 104, 105, 106],
-      work_item_type: "Product Backlog Item",
+      type: "Product Backlog Item",
       iteration_path: sprint1.path,
     });
     const t1 = generateWorkItem({

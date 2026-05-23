@@ -128,7 +128,7 @@ function buildActionableTree(boardData?: BoardData): ActionableNode[] {
 }
 
 function ActionableNodeCard({ node, depth }: { node: ActionableNode; depth: number }) {
-  const colorClass = TYPE_COLORS[node.workItem.work_item_type] ?? DEFAULT_TYPE_COLOR;
+  const colorClass = TYPE_COLORS[node.workItem.type] ?? DEFAULT_TYPE_COLOR;
   const compact = depth > 0;
   const padding = compact ? "px-2 py-1.5" : "p-3";
 
@@ -140,7 +140,7 @@ function ActionableNodeCard({ node, depth }: { node: ActionableNode; depth: numb
         </span>
         <StateDropdown
           workItemId={node.workItem.id}
-          workItemType={node.workItem.work_item_type}
+          workItemType={node.workItem.type}
           currentState={node.workItem.state}
         />
         {node.children.length > 0 && (

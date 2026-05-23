@@ -7,7 +7,7 @@ export function generateWorkItem(
   return {
     title: `Item ${overrides.id}`,
     state: "New",
-    work_item_type: "Task",
+    type: "Task",
     assigned_to: null,
     iteration_path: "Sprint1",
     area_path: "Area",
