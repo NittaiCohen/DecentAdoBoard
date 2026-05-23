@@ -1,5 +1,6 @@
 export {
   type WorkItem,
+  type WorkItemType,
   type Iteration,
   type AdoConfig,
   type BoardData,

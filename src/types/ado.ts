@@ -1,8 +1,16 @@
+export type WorkItemType =
+  | "Bug"
+  | "Task"
+  | "User Story"
+  | "Feature"
+  | "Epic"
+  | "Product Backlog Item";
+
 export interface WorkItem {
   id: number;
   title: string;
   state: string;
-  work_item_type: string;
+  work_item_type: WorkItemType;
   assigned_to: string | null;
   iteration_path: string;
   area_path: string;
