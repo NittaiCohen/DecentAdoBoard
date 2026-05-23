@@ -412,10 +412,14 @@ export function assignLaneOffsets(edges: Edge[], nodePositions: Map<string, Node
   const forwardEdgeSegs = forwardEdges.map((e) => preOffsetSegments(e, nodePositions));
 
   // Build overlap adjacency graph
+  // Edges that share a source or target converge/diverge naturally — skip them.
   const adjacency = new Map<number, Set<number>>();
-  forwardEdgeSegs.forEach(({ segments: segmentsI }, i) => {
-    forwardEdgeSegs.slice(i + 1).forEach(({ segments: segmentsJ }, offset) => {
+  forwardEdgeSegs.forEach(({ segments: segmentsI, edge: edgeI }, i) => {
+    forwardEdgeSegs.slice(i + 1).forEach(({ segments: segmentsJ, edge: edgeJ }, offset) => {
       const j = i + 1 + offset;
+      if (edgeI.source === edgeJ.source || edgeI.target === edgeJ.target) {
+        return;
+      }
       if (segmentsI.some((s1) => segmentsJ.some((s2) => segmentsOverlap(s1, s2)))) {
         getOrCreate(adjacency, i).add(j);
         getOrCreate(adjacency, j).add(i);
