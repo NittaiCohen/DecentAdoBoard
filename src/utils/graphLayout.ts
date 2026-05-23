@@ -470,11 +470,11 @@ interface IterationInfo {
 interface ColumnPlan {
   sprintWidths: Map<string, number>;
   sprintStartCol: Map<string, number>;
-  itemEffCol: Map<number, number>;
-  effColumnX: Map<number, number>;
-  effColumnGroups: Map<number, WorkItem[]>;
+  effectiveColumnByItemId: Map<number, number>;
+  xPositionByColumn: Map<number, number>;
+  workItemsByColumn: Map<number, WorkItem[]>;
   columnX: Map<string, number>;
-  maxEffCol: number;
+  maxColumnIndex: number;
   multiSprintChildDepths: Map<number, number>;
 }
 
@@ -783,14 +783,14 @@ function buildColumnPlan(
     sprintWidths,
   );
 
-  const { sprintStartCol, itemEffCol, maxEffCol } = buildEffectiveColumns(
+  const { sprintStartCol, effectiveColumnByItemId, maxColumnIndex } = buildEffectiveColumns(
     iterInfo,
     withinSprintDepth,
     sprintWidths,
     workItemMap,
   );
 
-  const effColumnX = buildEffColumnXPositions(
+  const xPositionByColumn = buildColumnXPositions(
     iterInfo.iterationPaths,
     sprintStartCol,
     sprintWidths,
@@ -799,11 +799,11 @@ function buildColumnPlan(
   return {
     sprintWidths,
     sprintStartCol,
-    itemEffCol,
-    effColumnX,
-    effColumnGroups: groupItemsByEffCol(itemEffCol, workItemMap),
-    columnX: buildSprintColumnX(iterInfo.iterationPaths, sprintStartCol, effColumnX),
-    maxEffCol,
+    effectiveColumnByItemId,
+    xPositionByColumn,
+    workItemsByColumn: groupItemsByColumn(effectiveColumnByItemId, workItemMap),
+    columnX: buildSprintColumnX(iterInfo.iterationPaths, sprintStartCol, xPositionByColumn),
+    maxColumnIndex,
     multiSprintChildDepths,
   };
 }
@@ -814,41 +814,45 @@ function buildEffectiveColumns(
   withinSprintDepth: Map<number, number>,
   sprintWidths: Map<string, number>,
   workItemMap: Map<number, WorkItem>,
-): { sprintStartCol: Map<string, number>; itemEffCol: Map<number, number>; maxEffCol: number } {
+): {
+  sprintStartCol: Map<string, number>;
+  effectiveColumnByItemId: Map<number, number>;
+  maxColumnIndex: number;
+} {
   const sprintStartCol = new Map<string, number>();
-  let effColStart = 0;
+  let nextColumnIndex = 0;
   iterInfo.iterationPaths.forEach((path) => {
-    sprintStartCol.set(path, effColStart);
-    effColStart += sprintWidths.get(path) ?? 1;
+    sprintStartCol.set(path, nextColumnIndex);
+    nextColumnIndex += sprintWidths.get(path) ?? 1;
   });
 
-  const itemEffCol = new Map<number, number>();
+  const effectiveColumnByItemId = new Map<number, number>();
   iterInfo.iterationGroups.forEach((items, iterPath) => {
     const base = sprintStartCol.get(iterPath) ?? 0;
     items.forEach((item) => {
-      itemEffCol.set(item.id, base + (withinSprintDepth.get(item.id) ?? 0));
+      effectiveColumnByItemId.set(item.id, base + (withinSprintDepth.get(item.id) ?? 0));
     });
   });
 
-  enforceSuccessorOrdering(itemEffCol, workItemMap);
+  enforceSuccessorOrdering(effectiveColumnByItemId, workItemMap);
 
-  let maxEffCol = effColStart - 1;
-  itemEffCol.forEach((col) => {
-    maxEffCol = Math.max(maxEffCol, col);
+  let maxColumnIndex = nextColumnIndex - 1;
+  effectiveColumnByItemId.forEach((col) => {
+    maxColumnIndex = Math.max(maxColumnIndex, col);
   });
 
-  return { sprintStartCol, itemEffCol, maxEffCol };
+  return { sprintStartCol, effectiveColumnByItemId, maxColumnIndex };
 }
 
 /** Group work items by their effective column index. */
-function groupItemsByEffCol(
-  itemEffCol: Map<number, number>,
+function groupItemsByColumn(
+  effectiveColumnByItemId: Map<number, number>,
   workItemMap: Map<number, WorkItem>,
 ): Map<number, WorkItem[]> {
-  const resolved = resolveWorkItemIds([...itemEffCol.keys()], workItemMap);
+  const resolved = resolveWorkItemIds([...effectiveColumnByItemId.keys()], workItemMap);
   return mapBy(
-    resolved.filter((item) => itemEffCol.has(item.id)),
-    (item) => itemEffCol.get(item.id) ?? 0,
+    resolved.filter((item) => effectiveColumnByItemId.has(item.id)),
+    (item) => effectiveColumnByItemId.get(item.id) ?? 0,
   );
 }
 
@@ -856,12 +860,12 @@ function groupItemsByEffCol(
 function buildSprintColumnX(
   iterationPaths: string[],
   sprintStartCol: Map<string, number>,
-  effColumnX: Map<number, number>,
+  xPositionByColumn: Map<number, number>,
 ): Map<string, number> {
   const columnX = new Map<string, number>();
   iterationPaths.forEach((path) => {
     const startCol = sprintStartCol.get(path) ?? 0;
-    const x = effColumnX.get(startCol);
+    const x = xPositionByColumn.get(startCol);
     if (!isNil(x)) {
       columnX.set(path, x);
     }
@@ -870,10 +874,10 @@ function buildSprintColumnX(
 }
 
 export function enforceSuccessorOrdering(
-  itemEffCol: Map<number, number>,
+  effectiveColumnByItemId: Map<number, number>,
   workItemMap: Map<number, WorkItem>,
 ): void {
-  const allColumnItemIds = [...itemEffCol.keys()];
+  const allColumnItemIds = [...effectiveColumnByItemId.keys()];
   const maxPasses = allColumnItemIds.length;
 
   for (let pass = 0; pass < maxPasses; pass++) {
@@ -881,15 +885,15 @@ export function enforceSuccessorOrdering(
 
     for (const id of allColumnItemIds) {
       const item = workItemMap.get(id);
-      const myCol = itemEffCol.get(id);
+      const myCol = effectiveColumnByItemId.get(id);
       if (!item || isNil(myCol)) {
         continue;
       }
 
       for (const succId of item.successors) {
-        const succCol = itemEffCol.get(succId);
+        const succCol = effectiveColumnByItemId.get(succId);
         if (!isNil(succCol) && succCol <= myCol) {
-          itemEffCol.set(succId, myCol + 1);
+          effectiveColumnByItemId.set(succId, myCol + 1);
           crossShifted = true;
         }
       }
@@ -902,23 +906,23 @@ export function enforceSuccessorOrdering(
 }
 
 /** Map each effective column index to its pixel X position. */
-function buildEffColumnXPositions(
+function buildColumnXPositions(
   iterationPaths: string[],
   sprintStartCol: Map<string, number>,
   sprintWidths: Map<string, number>,
 ): Map<number, number> {
-  const effColumnX = new Map<number, number>();
+  const xPositionByColumn = new Map<number, number>();
   let sprintBaseX = SPRINT_PADDING;
   for (const path of iterationPaths) {
     const startCol = sprintStartCol.get(path) ?? 0;
     const width = sprintWidths.get(path) ?? 1;
     for (let sub = 0; sub < width; sub++) {
-      effColumnX.set(startCol + sub, sprintBaseX + sub * SUB_COLUMN_STRIDE);
+      xPositionByColumn.set(startCol + sub, sprintBaseX + sub * SUB_COLUMN_STRIDE);
     }
     sprintBaseX +=
       MIN_COLUMN_WIDTH + (width > 1 ? (width - 1) * SUB_COLUMN_STRIDE : 0) + NODE_GAP_X;
   }
-  return effColumnX;
+  return xPositionByColumn;
 }
 
 // --- Phase 4: Layout items per column ---
@@ -1163,7 +1167,7 @@ function layoutCollapsedMultiSprint(
 
 /** Advance the Y cursor for all columns spanned by a multi-sprint parent after placing it.
  *
- * Fills the entire contiguous effCol range [minC, maxC] rather than only the
+ * Fills the entire contiguous effectiveColumn range [minC, maxC] rather than only the
  * specific sprint columns in descPaths. Without this, a gap between two
  * non-consecutive descendant sprints leaves intermediate columns at their
  * initial Y, causing another multi-sprint parent whose home sprint falls in
@@ -1250,13 +1254,13 @@ function layoutAllColumns(
   ctx: RenderContext,
 ): Map<number, number> {
   const columnCurrentY = new Map<number, number>();
-  for (let i = 0; i <= plan.maxEffCol; i++) {
+  for (let i = 0; i <= plan.maxColumnIndex; i++) {
     columnCurrentY.set(i, TOP_OFFSET);
   }
 
-  for (let effCol = 0; effCol <= plan.maxEffCol; effCol++) {
-    const colX = plan.effColumnX.get(effCol) ?? SPRINT_PADDING;
-    const items = plan.effColumnGroups.get(effCol) ?? [];
+  for (let effectiveColumn = 0; effectiveColumn <= plan.maxColumnIndex; effectiveColumn++) {
+    const colX = plan.xPositionByColumn.get(effectiveColumn) ?? SPRINT_PADDING;
+    const items = plan.workItemsByColumn.get(effectiveColumn) ?? [];
 
     const sortedItems = [...items].sort((a, b) => {
       const aDone = ctx.doneStates.has(a.state) ? 1 : 0;
@@ -1264,7 +1268,7 @@ function layoutAllColumns(
       return aDone - bDone;
     });
 
-    let currentY = columnCurrentY.get(effCol) ?? TOP_OFFSET;
+    let currentY = columnCurrentY.get(effectiveColumn) ?? TOP_OFFSET;
     for (const workItem of sortedItems) {
       const doneChildCount = countDoneChildren(workItem, ctx);
 
@@ -1298,7 +1302,7 @@ function layoutAllColumns(
       }
     }
 
-    columnCurrentY.set(effCol, currentY);
+    columnCurrentY.set(effectiveColumn, currentY);
   }
 
   return columnCurrentY;
@@ -1321,7 +1325,7 @@ function createSprintDividers(
   for (const iterPath of iterInfo.iterationPaths) {
     const startCol = plan.sprintStartCol.get(iterPath) ?? 0;
     const width = plan.sprintWidths.get(iterPath) ?? 1;
-    const colStartX = plan.effColumnX.get(startCol) ?? SPRINT_PADDING;
+    const colStartX = plan.xPositionByColumn.get(startCol) ?? SPRINT_PADDING;
     const dividerWidth =
       MIN_COLUMN_WIDTH + (width > 1 ? (width - 1) * SUB_COLUMN_STRIDE : 0) + SPRINT_PADDING;
     const iterName = iterPath.split("\\").pop() ?? iterPath;
