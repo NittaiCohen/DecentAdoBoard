@@ -414,7 +414,7 @@ describe("buildDragStopNodes", () => {
     // Sibling priority: X stays at 0 (vertical slot), not shifted by deltaX
     expect(succ.position.x).toBe(0);
     // Gets a vertical slot position (moved from origY 200 to computed slot)
-    expect(succ.position.y).toBe(0 + NODE_HEIGHT + NODE_GAP_Y);
+    expect(succ.position.y).toBe(NODE_HEIGHT + NODE_GAP_Y);
   });
 });
 
