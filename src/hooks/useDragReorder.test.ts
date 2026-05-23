@@ -425,7 +425,6 @@ describe("buildDragStartState", () => {
       [2, generateWorkItem({ id: 2, predecessors: [1], successors: [] })],
       [3, generateWorkItem({ id: 3, predecessors: [], successors: [] })],
     ]);
-    const wiMapRef = { current: wiMap };
 
     const nodes: Node[] = [
       { ...mockNode("wi-1", 100, 100), draggable: true },
@@ -435,7 +434,7 @@ describe("buildDragStartState", () => {
 
     const draggedNode = nodes[0];
 
-    const state = buildDragStartState(nodes, draggedNode, wiMapRef);
+    const state = buildDragStartState(nodes, draggedNode, wiMap);
 
     expect(state.draggedId).toBe("wi-1");
     expect(state.draggedOrigX).toBe(100);
@@ -452,7 +451,6 @@ describe("buildDragStartState", () => {
       [2, generateWorkItem({ id: 2, predecessors: [1], successors: [] })],
       [3, generateWorkItem({ id: 3, predecessors: [], successors: [] })],
     ]);
-    const wiMapRef = { current: wiMap };
 
     const nodes: Node[] = [
       { ...mockNode("wi-1", 100, 100), draggable: true },
@@ -462,7 +460,7 @@ describe("buildDragStartState", () => {
 
     const draggedNode = nodes[0];
 
-    const state = buildDragStartState(nodes, draggedNode, wiMapRef);
+    const state = buildDragStartState(nodes, draggedNode, wiMap);
 
     // wi-2 is same-column successor → removed from successor set, treated as sibling
     expect(state.successorIds.has("wi-2")).toBe(false);
@@ -481,7 +479,6 @@ describe("buildDragStartState", () => {
       [4, generateWorkItem({ id: 4, predecessors: [], successors: [] })],
       [5, generateWorkItem({ id: 5, predecessors: [], successors: [] })],
     ]);
-    const wiMapRef = { current: wiMap };
 
     // wi-4 and wi-5 ensure x=100 is the largest column (3 nodes),
     // so wi-2 (x=500) and wi-3 (x=800) are clearly cross-column successors.
@@ -495,7 +492,7 @@ describe("buildDragStartState", () => {
 
     const draggedNode = nodes[0];
 
-    const state = buildDragStartState(nodes, draggedNode, wiMapRef);
+    const state = buildDragStartState(nodes, draggedNode, wiMap);
 
     expect(state.successorIds.has("wi-2")).toBe(true);
     expect(state.successorIds.has("wi-3")).toBe(true);
@@ -517,7 +514,6 @@ describe("buildDragStartState", () => {
       [3, generateWorkItem({ id: 3, predecessors: [2], successors: [] })],
       [4, generateWorkItem({ id: 4, predecessors: [], successors: [] })],
     ]);
-    const wiMapRef = { current: wiMap };
 
     const nodes: Node[] = [
       { ...mockNode("wi-1", 100, 100), draggable: true },
@@ -528,7 +524,7 @@ describe("buildDragStartState", () => {
 
     const draggedNode = nodes[0];
 
-    const state = buildDragStartState(nodes, draggedNode, wiMapRef);
+    const state = buildDragStartState(nodes, draggedNode, wiMap);
 
     // wi-2 same-column → sibling
     expect(state.successorIds.has("wi-2")).toBe(false);
@@ -543,7 +539,6 @@ describe("buildDragStartState", () => {
       [1, generateWorkItem({ id: 1, predecessors: [], successors: [2] })],
       [2, generateWorkItem({ id: 2, predecessors: [1], successors: [] })],
     ]);
-    const wiMapRef = { current: wiMap };
 
     const nodes: Node[] = [
       { ...mockNode("wi-1", 100, 100), draggable: true },
@@ -551,7 +546,7 @@ describe("buildDragStartState", () => {
     ];
 
     // Dragging wi-2, which has predecessor wi-1 in the same column
-    const state = buildDragStartState(nodes, nodes[1], wiMapRef);
+    const state = buildDragStartState(nodes, nodes[1], wiMap);
 
     expect(state.draggedId).toBe("wi-2");
     expect(state.xLocked).toBe(true);
@@ -559,14 +554,13 @@ describe("buildDragStartState", () => {
 
   it("handles dragging a node with no work item mapping", () => {
     const wiMap = new Map<number, WorkItem>();
-    const wiMapRef = { current: wiMap };
 
     const nodes: Node[] = [
       { ...mockNode("wi-99", 100, 100), draggable: true },
       { ...mockNode("wi-100", 100, 200), draggable: true },
     ];
 
-    const state = buildDragStartState(nodes, nodes[0], wiMapRef);
+    const state = buildDragStartState(nodes, nodes[0], wiMap);
 
     // No work item found: xLocked defaults to true, no successors
     expect(state.xLocked).toBe(true);
@@ -586,7 +580,6 @@ describe("buildDragStartState", () => {
       [5, generateWorkItem({ id: 5, predecessors: [], successors: [] })],
       [6, generateWorkItem({ id: 6, predecessors: [], successors: [] })],
     ]);
-    const wiMapRef = { current: wiMap };
 
     const nodes: Node[] = [
       { ...mockNode("wi-1", 100, 100), draggable: true },
@@ -599,7 +592,7 @@ describe("buildDragStartState", () => {
 
     const draggedNode = nodes[4]; // wi-5 at x=800
 
-    const state = buildDragStartState(nodes, draggedNode, wiMapRef);
+    const state = buildDragStartState(nodes, draggedNode, wiMap);
 
     // columnX should match the dragged node's column, not the largest one
     expect(state.columnX).toBe(800);
@@ -628,7 +621,6 @@ describe("buildDragStartState", () => {
       [5, generateWorkItem({ id: 5, predecessors: [], successors: [6] })], // E
       [6, generateWorkItem({ id: 6, predecessors: [5], successors: [] })], // F
     ]);
-    const wiMapRef = { current: wiMap };
 
     const parentId = "group-99";
     const nodes: Node[] = [
@@ -641,7 +633,7 @@ describe("buildDragStartState", () => {
     ];
 
     // Drag E (wi-5): should have A and B as siblings
-    const stateE = buildDragStartState(nodes, nodes[3], wiMapRef);
+    const stateE = buildDragStartState(nodes, nodes[3], wiMap);
     expect(stateE.columnX).toBe(500);
     expect(stateE.siblingById.has("group-1")).toBe(true); // A is sibling
     expect(stateE.siblingById.has("group-2")).toBe(true); // B is sibling
@@ -649,7 +641,7 @@ describe("buildDragStartState", () => {
     expect(stateE.successorIds.has("wi-6")).toBe(true); // F is cross-column successor
 
     // Drag A (group-1): should have B and E as siblings
-    const stateA = buildDragStartState(nodes, nodes[1], wiMapRef);
+    const stateA = buildDragStartState(nodes, nodes[1], wiMap);
     expect(stateA.columnX).toBe(500);
     expect(stateA.siblingById.has("group-2")).toBe(true); // B is sibling
     expect(stateA.siblingById.has("wi-5")).toBe(true); // E is sibling
@@ -657,7 +649,7 @@ describe("buildDragStartState", () => {
     expect(stateA.xLocked).toBe(false); // A has no predecessors
 
     // Drag B (group-2): should have A and E as siblings, xLocked=false (D at x=100 is far)
-    const stateB = buildDragStartState(nodes, nodes[2], wiMapRef);
+    const stateB = buildDragStartState(nodes, nodes[2], wiMap);
     expect(stateB.columnX).toBe(500);
     expect(stateB.siblingById.has("group-1")).toBe(true); // A is sibling
     expect(stateB.siblingById.has("wi-5")).toBe(true); // E is sibling
@@ -671,7 +663,6 @@ describe("buildDragStartState", () => {
       [2, generateWorkItem({ id: 2, predecessors: [], successors: [] })],
       [3, generateWorkItem({ id: 3, predecessors: [], successors: [] })],
     ]);
-    const wiMapRef = { current: wiMap };
 
     // wi-3 is alone at x=600, no other nodes nearby
     const nodes: Node[] = [
@@ -680,7 +671,7 @@ describe("buildDragStartState", () => {
       { ...mockNode("wi-3", 600, 100), draggable: true },
     ];
 
-    const state = buildDragStartState(nodes, nodes[2], wiMapRef);
+    const state = buildDragStartState(nodes, nodes[2], wiMap);
 
     // No column matches dragX=600, so columnX falls back to dragX
     expect(state.columnX).toBe(600);

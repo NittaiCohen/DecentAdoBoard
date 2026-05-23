@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   Background,
   BackgroundVariant,
+  type Connection,
   ControlButton,
   Controls,
   type EdgeTypes,
@@ -14,6 +15,7 @@ import {
   useReactFlow,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { useQueryClient } from "@tanstack/react-query";
 import type { BoardData, WorkItem } from "../types";
 import WorkItemNodeComponent from "./WorkItemNode";
 import SprintDividerComponent from "./SprintDivider";
@@ -22,6 +24,8 @@ import DragGhostComponent from "./DragGhost";
 import DependencyEdge from "./DependencyEdge";
 import { buildGraphLayout, buildNodePositions } from "../utils/graphLayout";
 import { assignLaneOffsets } from "../utils/edgeRouting";
+import { addDependency } from "../api/tauri";
+import { wouldCreateCycle } from "../utils/dependencies";
 import { useDragReorder } from "../hooks/useDragReorder";
 import { useExpandedParents } from "../hooks/useExpandedParents";
 
@@ -56,6 +60,52 @@ const ZOOM_FACTOR = 1.25;
 function GraphViewInner({ boardData }: GraphViewProps) {
   const [expandedParents, handleToggleExpand] = useExpandedParents(boardData);
   const { setViewport, getViewport, fitView } = useReactFlow();
+  const queryClient = useQueryClient();
+
+  const wiMap = useMemo(() => {
+    const map = new Map<number, WorkItem>();
+    if (boardData) {
+      boardData.work_items.forEach((workItem) => {
+        map.set(workItem.id, workItem);
+      });
+    }
+    return map;
+  }, [boardData]);
+
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      const sourceWiId = parseInt(connection.source.replace("wi-", ""), 10);
+      const targetWiId = parseInt(connection.target.replace("wi-", ""), 10);
+      if (isNaN(sourceWiId) || isNaN(targetWiId)) {
+        return;
+      }
+
+      if (wouldCreateCycle(sourceWiId, targetWiId, wiMap)) {
+        return;
+      }
+
+      void addDependency(sourceWiId, targetWiId);
+
+      queryClient.setQueryData<BoardData>(["boardData"], (old) => {
+        if (!old) {
+          return old;
+        }
+        return {
+          ...old,
+          work_items: old.work_items.map((wi) => {
+            if (wi.id === sourceWiId) {
+              return { ...wi, successors: [...wi.successors, targetWiId] };
+            }
+            if (wi.id === targetWiId) {
+              return { ...wi, predecessors: [...wi.predecessors, sourceWiId] };
+            }
+            return wi;
+          }),
+        };
+      });
+    },
+    [queryClient, wiMap],
+  );
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(() => {
     if (!boardData) {
@@ -110,17 +160,6 @@ function GraphViewInner({ boardData }: GraphViewProps) {
   //   return JSON.stringify({ ts: new Date().toISOString(), iterations: data.iterations.length, nodes: debugNodes }, null, 2);
   // }
 
-  const wiMapRef = useRef<Map<number, WorkItem>>(new Map());
-  useEffect(() => {
-    const map = new Map<number, WorkItem>();
-    if (boardData) {
-      for (const workItem of boardData.work_items) {
-        map.set(workItem.id, workItem);
-      }
-    }
-    wiMapRef.current = map;
-  }, [boardData]);
-
   const handleDragSettled = useCallback(
     (finalNodes: Node[]) => {
       const nodePositions = buildNodePositions(finalNodes);
@@ -131,7 +170,7 @@ function GraphViewInner({ boardData }: GraphViewProps) {
 
   const { handleNodeDragStart, handleNodeDrag, handleNodeDragStop } = useDragReorder(
     setNodes,
-    wiMapRef,
+    wiMap,
     handleDragSettled,
   );
 
@@ -230,6 +269,7 @@ function GraphViewInner({ boardData }: GraphViewProps) {
         onNodeDragStart={handleNodeDragStart}
         onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleNodeDragStop}
+        onConnect={handleConnect}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView

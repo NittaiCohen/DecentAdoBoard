@@ -122,7 +122,7 @@ function hasPredecessorInColumn(
 export function buildDragStartState(
   prev: Node[],
   draggedNode: Node,
-  wiMapRef: React.RefObject<Map<number, WorkItem>>,
+  wiMap: Map<number, WorkItem>,
 ): DragState {
   const dragHeight =
     draggedNode.measured?.height ??
@@ -139,14 +139,14 @@ export function buildDragStartState(
   }
 
   const workItemId = extractWorkItemId(draggedNode.id);
-  const draggedWorkItem = isNil(workItemId) ? undefined : wiMapRef.current.get(workItemId);
+  const draggedWorkItem = isNil(workItemId) ? undefined : wiMap.get(workItemId);
 
   const xLocked = draggedWorkItem
     ? hasPredecessorInColumn(draggedWorkItem, dragX, dragWidth, nodeMap)
     : true;
 
   const successorIds = draggedWorkItem
-    ? collectSuccessorChain(draggedWorkItem.id, wiMapRef.current, nodeMap)
+    ? collectSuccessorChain(draggedWorkItem.id, wiMap, nodeMap)
     : new Set<string>();
   const successorOriginalX = new Map<string, number>();
   for (const successorId of successorIds) {
@@ -488,11 +488,16 @@ type SetNodes = (updater: (prev: Node[]) => Node[]) => void;
 
 export function useDragReorder(
   setNodes: SetNodes,
-  wiMapRef: React.RefObject<Map<number, WorkItem>>,
+  wiMap: Map<number, WorkItem>,
   onDragSettled?: (finalNodes: Node[]) => void,
 ) {
   const dragRef = useRef<DragState | null>(null);
   const rafRef = useRef(0);
+  const wiMapRef = useRef(wiMap);
+
+  useEffect(() => {
+    wiMapRef.current = wiMap;
+  }, [wiMap]);
 
   useEffect(() => {
     return () => {
@@ -503,7 +508,7 @@ export function useDragReorder(
   const handleNodeDragStart = useCallback(
     (_event: React.MouseEvent, draggedNode: Node) => {
       setNodes((prev) => {
-        const state = buildDragStartState(prev, draggedNode, wiMapRef);
+        const state = buildDragStartState(prev, draggedNode, wiMapRef.current);
         dragRef.current = state;
         return buildDragStartNodes(prev, state, draggedNode);
       });

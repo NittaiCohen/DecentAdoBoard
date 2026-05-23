@@ -140,6 +140,67 @@ pub async fn get_work_item_type_states(
     fetch_states_impl(&state, &work_item_type).await
 }
 
+/// Add a predecessor/successor dependency between two work items in ADO.
+/// Creates a Dependency-Forward relation from source_id to target_id,
+/// meaning source_id is a predecessor of target_id.
+async fn add_dependency_impl(
+    state: &AppState,
+    source_id: i64,
+    target_id: i64,
+) -> Result<(), String> {
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workitems/{}?api-version=7.1",
+        config.organization, config.project, source_id
+    );
+
+    let relation_url = format!(
+        "https://dev.azure.com/{}/_apis/wit/workItems/{}",
+        config.organization, target_id
+    );
+
+    let patch_body = vec![JsonPatchOperation {
+        op: "add".to_string(),
+        path: "/relations/-".to_string(),
+        value: serde_json::json!({
+            "rel": "System.LinkTypes.Dependency-Forward",
+            "url": relation_url,
+        }),
+    }];
+
+    let resp = state
+        .http_client
+        .patch(&url)
+        .header("Authorization", &auth)
+        .header("Content-Type", "application/json-patch+json")
+        .json(&patch_body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to add dependency: {e}"))?;
+
+    check_response(resp, "Add dependency").await?;
+
+    state.audit_log.log(
+        AuditAction::AddDependency {
+            predecessor_id: source_id,
+        },
+        target_id,
+    )?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn add_dependency(
+    state: State<'_, AppState>,
+    source_id: i64,
+    target_id: i64,
+) -> Result<(), String> {
+    add_dependency_impl(&state, source_id, target_id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

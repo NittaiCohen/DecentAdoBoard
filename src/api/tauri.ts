@@ -74,3 +74,8 @@ export async function getWorkItemTypeStates(workItemType: string): Promise<WorkI
 export async function writeDebugLog(data: string): Promise<string> {
   return await invoke<string>("write_debug_log", { data });
 }
+
+/** Add a predecessor/successor dependency between two work items in ADO. */
+export async function addDependency(sourceId: number, targetId: number): Promise<void> {
+  await invoke("add_dependency", { sourceId, targetId });
+}
