@@ -836,10 +836,7 @@ function buildEffectiveColumns(
 
   enforceSuccessorOrdering(effectiveColumnByItemId, workItemMap);
 
-  let maxColumnIndex = nextColumnIndex - 1;
-  effectiveColumnByItemId.forEach((col) => {
-    maxColumnIndex = Math.max(maxColumnIndex, col);
-  });
+  const maxColumnIndex = Math.max(nextColumnIndex - 1, ...effectiveColumnByItemId.values());
 
   return { sprintStartCol, effectiveColumnByItemId, maxColumnIndex };
 }
