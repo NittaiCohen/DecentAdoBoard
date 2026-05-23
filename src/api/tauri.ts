@@ -79,3 +79,8 @@ export async function writeDebugLog(data: string): Promise<string> {
 export async function addDependency(sourceId: number, targetId: number): Promise<void> {
   await invoke("add_dependency", { sourceId, targetId });
 }
+
+/** Remove a predecessor/successor dependency between two work items in ADO. */
+export async function removeDependency(sourceId: number, targetId: number): Promise<void> {
+  await invoke("remove_dependency", { sourceId, targetId });
+}

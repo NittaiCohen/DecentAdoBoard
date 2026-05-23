@@ -6,6 +6,10 @@ import type { DependencyEdgeData } from "../utils/edgeRouting";
 
 type DependencyEdge = Edge<DependencyEdgeData, "dependency">;
 
+const EDGE_STROKE_WIDTH = 1.8;
+const EDGE_SELECTED_STROKE_WIDTH = 2.8;
+const EDGE_INTERACTION_WIDTH = 20;
+
 function DependencyEdge({
   source,
   target,
@@ -15,6 +19,7 @@ function DependencyEdge({
   targetY,
   data,
   markerEnd,
+  selected,
 }: EdgeProps<DependencyEdge>) {
   const nodes = useNodes();
   const isDraggingSourceOrTarget = nodes.some(
@@ -38,8 +43,16 @@ function DependencyEdge({
         data?.laneOffset ?? 0,
       );
 
+  const stroke = selected ? "#2563eb" : "#000";
+  const strokeWidth = selected ? EDGE_SELECTED_STROKE_WIDTH : EDGE_STROKE_WIDTH;
+
   return (
-    <BaseEdge path={path} markerEnd={markerEnd} style={{ strokeWidth: 1.8, stroke: "#000" }} />
+    <BaseEdge
+      path={path}
+      markerEnd={markerEnd}
+      interactionWidth={EDGE_INTERACTION_WIDTH}
+      style={{ strokeWidth, stroke }}
+    />
   );
 }
 

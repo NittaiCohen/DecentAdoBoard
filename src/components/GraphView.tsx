@@ -5,6 +5,7 @@ import {
   type Connection,
   ControlButton,
   Controls,
+  type Edge,
   type EdgeTypes,
   type Node,
   type NodeTypes,
@@ -24,7 +25,7 @@ import DragGhostComponent from "./DragGhost";
 import DependencyEdge from "./DependencyEdge";
 import { buildGraphLayout, buildNodePositions } from "../utils/graphLayout";
 import { assignLaneOffsets } from "../utils/edgeRouting";
-import { addDependency } from "../api/tauri";
+import { addDependency, removeDependency } from "../api/tauri";
 import { wouldCreateCycle } from "../utils/dependencies";
 import { useDragReorder } from "../hooks/useDragReorder";
 import { useExpandedParents } from "../hooks/useExpandedParents";
@@ -105,6 +106,46 @@ function GraphViewInner({ boardData }: GraphViewProps) {
       });
     },
     [queryClient, wiMap],
+  );
+
+  const handleEdgesDelete = useCallback(
+    (deletedEdges: Edge[]) => {
+      deletedEdges.forEach((edge) => {
+        const match = /^edge-(\d+)-(\d+)$/.exec(edge.id);
+        if (!match) {
+          return;
+        }
+        const sourceWiId = parseInt(match[1], 10);
+        const targetWiId = parseInt(match[2], 10);
+
+        void removeDependency(sourceWiId, targetWiId);
+
+        queryClient.setQueryData<BoardData>(["boardData"], (old) => {
+          if (!old) {
+            return old;
+          }
+          return {
+            ...old,
+            work_items: old.work_items.map((wi) => {
+              if (wi.id === sourceWiId) {
+                return {
+                  ...wi,
+                  successors: wi.successors.filter((id) => id !== targetWiId),
+                };
+              }
+              if (wi.id === targetWiId) {
+                return {
+                  ...wi,
+                  predecessors: wi.predecessors.filter((id) => id !== sourceWiId),
+                };
+              }
+              return wi;
+            }),
+          };
+        });
+      });
+    },
+    [queryClient],
   );
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(() => {
@@ -270,6 +311,7 @@ function GraphViewInner({ boardData }: GraphViewProps) {
         onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleNodeDragStop}
         onConnect={handleConnect}
+        onEdgesDelete={handleEdgesDelete}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
         fitView

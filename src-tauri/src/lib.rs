@@ -43,6 +43,7 @@ pub fn run() {
             ado_writes::update_work_item_state,
             ado_writes::get_work_item_type_states,
             ado_writes::add_dependency,
+            ado_writes::remove_dependency,
             commands::write_debug_log,
         ])
         .run(tauri::generate_context!())

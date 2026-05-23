@@ -201,6 +201,97 @@ pub async fn add_dependency(
     add_dependency_impl(&state, source_id, target_id).await
 }
 
+/// Remove a predecessor/successor dependency between two work items in ADO.
+/// Finds the Dependency-Forward relation from source_id to target_id and removes it.
+async fn remove_dependency_impl(
+    state: &AppState,
+    source_id: i64,
+    target_id: i64,
+) -> Result<(), String> {
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+
+    // Fetch the source work item with relations to find the relation index
+    let get_url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workitems/{}?$expand=relations&api-version=7.1",
+        config.organization, config.project, source_id
+    );
+
+    let resp = state
+        .http_client
+        .get(&get_url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch work item relations: {e}"))?;
+
+    let resp = check_response(resp, "Fetch work item relations").await?;
+
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse work item response: {e}"))?;
+
+    let relations = body["relations"]
+        .as_array()
+        .ok_or_else(|| format!("Work item {source_id} has no relations"))?;
+
+    let target_suffix = format!("/workItems/{target_id}");
+    let relation_index = relations
+        .iter()
+        .position(|rel| {
+            rel["rel"].as_str() == Some("System.LinkTypes.Dependency-Forward")
+                && rel["url"]
+                    .as_str()
+                    .is_some_and(|url| url.ends_with(&target_suffix))
+        })
+        .ok_or_else(|| {
+            format!("No Dependency-Forward relation found from {source_id} to {target_id}")
+        })?;
+
+    // PATCH to remove the relation by index
+    let patch_url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workitems/{}?api-version=7.1",
+        config.organization, config.project, source_id
+    );
+
+    let patch_body = vec![JsonPatchOperation {
+        op: "remove".to_string(),
+        path: format!("/relations/{relation_index}"),
+        value: serde_json::Value::Null,
+    }];
+
+    let resp = state
+        .http_client
+        .patch(&patch_url)
+        .header("Authorization", &auth)
+        .header("Content-Type", "application/json-patch+json")
+        .json(&patch_body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to remove dependency: {e}"))?;
+
+    check_response(resp, "Remove dependency").await?;
+
+    state.audit_log.log(
+        AuditAction::RemoveDependency {
+            predecessor_id: source_id,
+        },
+        target_id,
+    )?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn remove_dependency(
+    state: State<'_, AppState>,
+    source_id: i64,
+    target_id: i64,
+) -> Result<(), String> {
+    remove_dependency_impl(&state, source_id, target_id).await
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
