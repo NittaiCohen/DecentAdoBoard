@@ -5,6 +5,7 @@ import type { WorkItemNodeData } from "../components/WorkItemNode";
 import type { SprintDividerData } from "../components/SprintDivider";
 import type { ParentGroupData } from "../components/ParentGroup";
 import { computeActionableSet } from "./actionable";
+import { mapBy } from "./collections";
 import { assignLaneOffsets } from "./edgeRouting";
 
 export const NODE_HEIGHT = 80;
@@ -575,37 +576,34 @@ function groupItemsBySprint(
   workItemMap: Map<number, WorkItem>,
   iterationByPath: Map<string, Iteration>,
 ): Map<string, WorkItem[]> {
-  const groups = new Map<string, WorkItem[]>();
-
-  for (const workItem of workItems) {
+  const eligible = workItems.filter((workItem) => {
     if (multiSprint.descendantIds.has(workItem.id)) {
-      continue;
+      return false;
     }
+
     if (
       workItem.parent_id &&
       workItemMap.has(workItem.parent_id) &&
       !multiSprint.parentIds.has(workItem.id)
     ) {
-      continue;
+      return false;
     }
 
-    let homeCol: string;
+    if (multiSprint.parentIds.has(workItem.id) && !multiSprint.paths.has(workItem.id)) {
+      return false;
+    }
+
+    return true;
+  });
+
+  return mapBy(eligible, (workItem) => {
     if (multiSprint.parentIds.has(workItem.id)) {
-      const descPaths = multiSprint.paths.get(workItem.id);
-      if (!descPaths) {
-        continue;
-      }
-      homeCol = findEarliestPath(descPaths, iterationByPath);
-    } else {
-      homeCol = workItem.iteration_path;
+      const descPaths = multiSprint.paths.get(workItem.id) ?? new Set<string>();
+      return findEarliestPath(descPaths, iterationByPath);
     }
 
-    const group = groups.get(homeCol) ?? [];
-    group.push(workItem);
-    groups.set(homeCol, group);
-  }
-
-  return groups;
+    return workItem.iteration_path;
+  });
 }
 
 // --- Phase 3: Compute effective columns ---
@@ -785,28 +783,12 @@ function buildColumnPlan(
     sprintWidths,
   );
 
-  const sprintStartCol = new Map<string, number>();
-  let effColStart = 0;
-  for (const path of iterInfo.iterationPaths) {
-    sprintStartCol.set(path, effColStart);
-    effColStart += sprintWidths.get(path) ?? 1;
-  }
-
-  const itemEffCol = new Map<number, number>();
-  for (const [iterPath, items] of iterInfo.iterationGroups) {
-    const base = sprintStartCol.get(iterPath) ?? 0;
-    for (const item of items) {
-      const depth = withinSprintDepth.get(item.id) ?? 0;
-      itemEffCol.set(item.id, base + depth);
-    }
-  }
-
-  enforceSuccessorOrdering(itemEffCol, workItemMap);
-
-  let maxEffCol = effColStart - 1;
-  for (const col of itemEffCol.values()) {
-    maxEffCol = Math.max(maxEffCol, col);
-  }
+  const { sprintStartCol, itemEffCol, maxEffCol } = buildEffectiveColumns(
+    iterInfo,
+    withinSprintDepth,
+    sprintWidths,
+    workItemMap,
+  );
 
   const effColumnX = buildEffColumnXPositions(
     iterInfo.iterationPaths,
@@ -814,36 +796,77 @@ function buildColumnPlan(
     sprintWidths,
   );
 
-  const effColumnGroups = new Map<number, WorkItem[]>();
-  for (const [id, col] of itemEffCol) {
-    const item = workItemMap.get(id);
-    if (!item) {
-      continue;
-    }
-    const group = effColumnGroups.get(col) ?? [];
-    group.push(item);
-    effColumnGroups.set(col, group);
-  }
-
-  const columnX = new Map<string, number>();
-  for (const path of iterInfo.iterationPaths) {
-    const startCol = sprintStartCol.get(path) ?? 0;
-    const x = effColumnX.get(startCol);
-    if (!isNil(x)) {
-      columnX.set(path, x);
-    }
-  }
-
   return {
     sprintWidths,
     sprintStartCol,
     itemEffCol,
     effColumnX,
-    effColumnGroups,
-    columnX,
+    effColumnGroups: groupItemsByEffCol(itemEffCol, workItemMap),
+    columnX: buildSprintColumnX(iterInfo.iterationPaths, sprintStartCol, effColumnX),
     maxEffCol,
     multiSprintChildDepths,
   };
+}
+
+/** Assign each top-level item to an effective column index based on its sprint and dependency depth. */
+function buildEffectiveColumns(
+  iterInfo: IterationInfo,
+  withinSprintDepth: Map<number, number>,
+  sprintWidths: Map<string, number>,
+  workItemMap: Map<number, WorkItem>,
+): { sprintStartCol: Map<string, number>; itemEffCol: Map<number, number>; maxEffCol: number } {
+  const sprintStartCol = new Map<string, number>();
+  let effColStart = 0;
+  iterInfo.iterationPaths.forEach((path) => {
+    sprintStartCol.set(path, effColStart);
+    effColStart += sprintWidths.get(path) ?? 1;
+  });
+
+  const itemEffCol = new Map<number, number>();
+  iterInfo.iterationGroups.forEach((items, iterPath) => {
+    const base = sprintStartCol.get(iterPath) ?? 0;
+    items.forEach((item) => {
+      itemEffCol.set(item.id, base + (withinSprintDepth.get(item.id) ?? 0));
+    });
+  });
+
+  enforceSuccessorOrdering(itemEffCol, workItemMap);
+
+  let maxEffCol = effColStart - 1;
+  itemEffCol.forEach((col) => {
+    maxEffCol = Math.max(maxEffCol, col);
+  });
+
+  return { sprintStartCol, itemEffCol, maxEffCol };
+}
+
+/** Group work items by their effective column index. */
+function groupItemsByEffCol(
+  itemEffCol: Map<number, number>,
+  workItemMap: Map<number, WorkItem>,
+): Map<number, WorkItem[]> {
+  const resolved = resolveWorkItemIds([...itemEffCol.keys()], workItemMap);
+  return mapBy(
+    resolved.filter((item) => itemEffCol.has(item.id)),
+    (item) => itemEffCol.get(item.id) ?? 0,
+  );
+}
+
+/** Map each sprint path to the pixel X of its first effective column. */
+function buildSprintColumnX(
+  iterationPaths: string[],
+  sprintStartCol: Map<string, number>,
+  effColumnX: Map<number, number>,
+): Map<string, number> {
+  const columnX = new Map<string, number>();
+  iterationPaths.forEach((path) => {
+    const startCol = sprintStartCol.get(path) ?? 0;
+    const x = effColumnX.get(startCol);
+    if (!isNil(x)) {
+      columnX.set(path, x);
+    }
+  });
+  return columnX;
 }
 
 export function enforceSuccessorOrdering(
