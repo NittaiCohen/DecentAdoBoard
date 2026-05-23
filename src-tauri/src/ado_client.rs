@@ -2,7 +2,7 @@ use crate::models::*;
 use crate::state::AppState;
 
 const WORK_ITEM_BATCH_SIZE: usize = 200;
-const SPRINT_WINDOW: usize = 2; // sprints before and after current
+const SPRINT_WINDOW: usize = 3; // sprints before and after current
 
 /// Check an HTTP response for non-success status and return a descriptive error.
 /// On success, returns the response unchanged for further processing.
@@ -532,7 +532,7 @@ mod tests {
 
         assert_eq!(
             get_sprint_window(&iterations),
-            vec!["Sprint1", "Sprint2", "Sprint3", "Sprint4", "Sprint5"]
+            vec!["Sprint0", "Sprint1", "Sprint2", "Sprint3", "Sprint4", "Sprint5", "Sprint6"]
         );
     }
 
@@ -560,7 +560,7 @@ mod tests {
 
         assert_eq!(
             get_sprint_window(&iterations),
-            vec!["Sprint0", "Sprint1", "Sprint2"]
+            vec!["Sprint0", "Sprint1", "Sprint2", "Sprint3"]
         );
     }
 
@@ -588,7 +588,7 @@ mod tests {
 
         assert_eq!(
             get_sprint_window(&iterations),
-            vec!["Sprint1", "Sprint2", "Sprint3"]
+            vec!["Sprint0", "Sprint1", "Sprint2", "Sprint3"]
         );
     }
 
@@ -616,7 +616,7 @@ mod tests {
 
         assert_eq!(
             get_sprint_window(&iterations),
-            vec!["Sprint0", "Sprint1", "Sprint2"]
+            vec!["Sprint0", "Sprint1", "Sprint2", "Sprint3"]
         );
     }
 
