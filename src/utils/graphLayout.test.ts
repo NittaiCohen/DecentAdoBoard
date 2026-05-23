@@ -716,3 +716,195 @@ describe("expanded parent multi-column layout", () => {
     expect(gc2.position.x).toBeGreaterThan(gc1.position.x);
   });
 });
+
+describe("sprint auto-widening for wide expanded groups", () => {
+  it("widens only the sprint containing the wide group, not other sprints", () => {
+    /*
+     *  Sprint 1: parent with 5-node chain → group width 1380 > 1200
+     *  Sprint 2: a simple leaf item
+     *  Only Sprint 1 should widen; Sprint 2 stays at base width.
+     */
+    const parent = generateWorkItem({
+      id: 1,
+      children: [2, 3, 4, 5, 6],
+      work_item_type: "Product Backlog Item",
+      iteration_path: sprint1.path,
+    });
+    const a = generateWorkItem({
+      id: 2,
+      parent_id: 1,
+      successors: [3],
+      iteration_path: sprint1.path,
+    });
+    const b = generateWorkItem({
+      id: 3,
+      parent_id: 1,
+      predecessors: [2],
+      successors: [4],
+      iteration_path: sprint1.path,
+    });
+    const c = generateWorkItem({
+      id: 4,
+      parent_id: 1,
+      predecessors: [3],
+      successors: [5],
+      iteration_path: sprint1.path,
+    });
+    const d = generateWorkItem({
+      id: 5,
+      parent_id: 1,
+      predecessors: [4],
+      successors: [6],
+      iteration_path: sprint1.path,
+    });
+    const e = generateWorkItem({
+      id: 6,
+      parent_id: 1,
+      predecessors: [5],
+      iteration_path: sprint1.path,
+    });
+    const leaf = generateWorkItem({ id: 10, iteration_path: sprint2.path });
+
+    const result = buildGraphLayout(
+      board([parent, a, b, c, d, e, leaf], [sprint1, sprint2]),
+      new Set([1]),
+    );
+
+    const groupNode = result.nodes.find((n) => n.id === "group-1");
+    expect(groupNode).toBeDefined();
+    if (!groupNode) {
+      throw new Error("group node not found");
+    }
+
+    const groupWidth = Number(groupNode.style?.width);
+    expect(groupWidth).toBeGreaterThan(1200);
+
+    const divider1 = result.nodes.find((n) => n.id === `sprint-${sprint1.path}`);
+    const divider2 = result.nodes.find((n) => n.id === `sprint-${sprint2.path}`);
+    expect(divider1).toBeDefined();
+    expect(divider2).toBeDefined();
+    if (!divider1 || !divider2) {
+      throw new Error("divider not found");
+    }
+
+    const divider1Width = Number(divider1.data.width);
+    const divider2Width = Number(divider2.data.width);
+
+    // Sprint 1 widens to fit the group
+    expect(divider1Width).toBeGreaterThanOrEqual(groupWidth);
+    // Sprint 2 stays at base width (MIN_COLUMN_WIDTH + SPRINT_PADDING = 1240)
+    expect(divider2Width).toBeLessThanOrEqual(1200 + 40);
+  });
+
+  it("does not widen a sprint when the expanded group fits within MIN_COLUMN_WIDTH", () => {
+    /*
+     *  A parent with a 2-node chain: group width
+     *  (2 * 220 + 1 * 60 + 2 * 20 = 520) fits within 1200.
+     *  Sprint should stay at base width.
+     */
+    const parent = generateWorkItem({
+      id: 1,
+      children: [2, 3],
+      work_item_type: "Product Backlog Item",
+    });
+    const child1 = generateWorkItem({ id: 2, parent_id: 1, successors: [3] });
+    const child2 = generateWorkItem({ id: 3, parent_id: 1, predecessors: [2] });
+
+    const narrowResult = buildGraphLayout(board([parent, child1, child2]), new Set([1]));
+    const wideResult = buildGraphLayout(board([parent, child1, child2]), new Set());
+
+    const narrowDivider = narrowResult.nodes.find((n) => n.id === `sprint-${sprint1.path}`);
+    const wideDivider = wideResult.nodes.find((n) => n.id === `sprint-${sprint1.path}`);
+    expect(narrowDivider).toBeDefined();
+    expect(wideDivider).toBeDefined();
+    if (!narrowDivider || !wideDivider) {
+      throw new Error("divider not found");
+    }
+
+    const narrowWidth = Number(narrowDivider.data.width);
+    const wideWidth = Number(wideDivider.data.width);
+    expect(narrowWidth).toBe(wideWidth);
+  });
+
+  it("widens a sprint for an expanded child inside a multi-sprint parent", () => {
+    /*
+     *  Feature spanning Sprint 1 and Sprint 2, containing a PBI with a
+     *  5-node chain in Sprint 1. Sprint 1 should widen so the multi-sprint
+     *  parent's span can accommodate the wide child.
+     */
+    const feature = generateWorkItem({
+      id: 100,
+      children: [101, 110],
+      work_item_type: "Feature",
+      iteration_path: sprint1.path,
+    });
+    const pbi = generateWorkItem({
+      id: 101,
+      parent_id: 100,
+      children: [102, 103, 104, 105, 106],
+      work_item_type: "Product Backlog Item",
+      iteration_path: sprint1.path,
+    });
+    const t1 = generateWorkItem({
+      id: 102,
+      parent_id: 101,
+      successors: [103],
+      iteration_path: sprint1.path,
+    });
+    const t2 = generateWorkItem({
+      id: 103,
+      parent_id: 101,
+      predecessors: [102],
+      successors: [104],
+      iteration_path: sprint1.path,
+    });
+    const t3 = generateWorkItem({
+      id: 104,
+      parent_id: 101,
+      predecessors: [103],
+      successors: [105],
+      iteration_path: sprint1.path,
+    });
+    const t4 = generateWorkItem({
+      id: 105,
+      parent_id: 101,
+      predecessors: [104],
+      successors: [106],
+      iteration_path: sprint1.path,
+    });
+    const t5 = generateWorkItem({
+      id: 106,
+      parent_id: 101,
+      predecessors: [105],
+      iteration_path: sprint1.path,
+    });
+    const other = generateWorkItem({
+      id: 110,
+      parent_id: 100,
+      iteration_path: sprint2.path,
+    });
+
+    const result = buildGraphLayout(
+      board([feature, pbi, t1, t2, t3, t4, t5, other], [sprint1, sprint2]),
+      new Set([100, 101]),
+    );
+
+    const pbiGroup = result.nodes.find((n) => n.id === "group-101");
+    expect(pbiGroup).toBeDefined();
+    if (!pbiGroup) {
+      throw new Error("pbi group not found");
+    }
+
+    const pbiWidth = Number(pbiGroup.style?.width);
+    expect(pbiWidth).toBeGreaterThan(1200);
+
+    const divider = result.nodes.find((n) => n.id === `sprint-${sprint1.path}`);
+    expect(divider).toBeDefined();
+    if (!divider) {
+      throw new Error("divider not found");
+    }
+
+    const dividerWidth = Number(divider.data.width);
+    expect(dividerWidth).toBeGreaterThanOrEqual(pbiWidth);
+  });
+});

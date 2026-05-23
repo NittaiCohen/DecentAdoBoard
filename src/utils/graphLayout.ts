@@ -60,6 +60,13 @@ const MIN_DIVIDER_HEIGHT_ROWS = 3;
 
 type NodeIdMap = Map<number, string>;
 
+/** Resolve an array of work item IDs to their WorkItem objects, dropping any that aren't in the map. */
+function resolveWorkItemIds(ids: number[], workItemMap: Map<number, WorkItem>): WorkItem[] {
+  return ids
+    .map((id) => workItemMap.get(id))
+    .filter((item): item is WorkItem => item !== undefined);
+}
+
 /**
  * Compute dependency depth for a set of items using Kahn's algorithm.
  * Returns a map of item ID → depth (0 = no predecessors in the set).
@@ -143,9 +150,7 @@ function collectDescendantIterPaths(
   workItemMap: Map<number, WorkItem>,
 ): Set<string> {
   const paths = new Set<string>();
-  const children = workItem.children
-    .map((childId) => workItemMap.get(childId))
-    .filter((childWorkItem): childWorkItem is WorkItem => childWorkItem !== undefined);
+  const children = resolveWorkItemIds(workItem.children, workItemMap);
 
   if (children.length === 0) {
     paths.add(workItem.iteration_path);
@@ -306,9 +311,7 @@ function measureChildHeight(
     return { height: NODE_HEIGHT, width: CHILD_WIDTH };
   }
 
-  const childItems = workItem.children
-    .map((childId) => workItemMap.get(childId))
-    .filter((childWorkItem): childWorkItem is WorkItem => childWorkItem !== undefined);
+  const childItems = resolveWorkItemIds(workItem.children, workItemMap);
 
   const layout = computeGroupLayout(childItems, workItemMap, expandedParents, doneStates);
   return { height: layout.height, width: layout.width };
@@ -376,11 +379,9 @@ function renderExpandedGroup(
   ctx: RenderContext,
   columnExtent?: CoordExtent,
 ): { width: number; height: number } {
-  const childItems = workItem.children
-    .map((childId) => ctx.workItemMap.get(childId))
-    .filter((childWorkItem): childWorkItem is WorkItem => childWorkItem !== undefined);
+  const children = resolveWorkItemIds(workItem.children, ctx.workItemMap);
 
-  const layout = measureGroupDimensions(childItems, ctx);
+  const layout = measureGroupDimensions(children, ctx);
   const doneChildCount = countDoneChildren(workItem, ctx);
 
   const groupId = `group-${workItem.id}`;
@@ -435,6 +436,19 @@ function findEarliestPath(
     }
   }
   return earliest ?? [...paths][0];
+}
+
+/** Determine which sprint a work item should be placed in: its own iteration for leaves, or the earliest descendant sprint for parents. */
+function getPlacementPath(
+  item: WorkItem,
+  workItemMap: Map<number, WorkItem>,
+  iterationByPath: Map<string, { start_date?: string | null }>,
+): string {
+  if (item.children.length === 0) {
+    return item.iteration_path;
+  }
+  const descPaths = collectDescendantIterPaths(item, workItemMap);
+  return findEarliestPath(descPaths, iterationByPath);
 }
 
 // --- Phase result types ---
@@ -635,17 +649,11 @@ function computeMultiSprintChildDepths(
     if (!parent) {
       continue;
     }
-    const directChildren = parent.children
-      .map((childId) => workItemMap.get(childId))
-      .filter((child): child is WorkItem => child !== undefined);
+    const directChildren = resolveWorkItemIds(parent.children, workItemMap);
 
     const childrenBySprint = new Map<string, WorkItem[]>();
     for (const child of directChildren) {
-      let placementPath = child.iteration_path;
-      if (child.children.length > 0) {
-        const childDescPaths = collectDescendantIterPaths(child, workItemMap);
-        placementPath = findEarliestPath(childDescPaths, iterationByPath);
-      }
+      const placementPath = getPlacementPath(child, workItemMap, iterationByPath);
       const group = childrenBySprint.get(placementPath) ?? [];
       group.push(child);
       childrenBySprint.set(placementPath, group);
@@ -666,17 +674,114 @@ function computeMultiSprintChildDepths(
   return childDepths;
 }
 
+/**
+ * If an expanded parent group is wider than the sprint's current pixel width at
+ * its depth position, widen the sprint so the group fits without overflow.
+ */
+function widenForItemIfNeeded(
+  item: WorkItem,
+  sprintPath: string,
+  depth: number,
+  workItemMap: Map<number, WorkItem>,
+  expandedParents: Set<number>,
+  doneStates: Set<string>,
+  sprintWidths: Map<string, number>,
+): void {
+  if (!expandedParents.has(item.id) || item.children.length === 0) {
+    return;
+  }
+
+  const children = resolveWorkItemIds(item.children, workItemMap);
+
+  const layout = computeGroupLayout(children, workItemMap, expandedParents, doneStates);
+
+  const currentWidth = sprintWidths.get(sprintPath) ?? 1;
+  const currentPixelWidth =
+    MIN_COLUMN_WIDTH + (currentWidth > 1 ? (currentWidth - 1) * SUB_COLUMN_STRIDE : 0);
+  const requiredPixelWidth = depth * SUB_COLUMN_STRIDE + layout.width;
+
+  if (requiredPixelWidth > currentPixelWidth) {
+    const additionalCols = Math.ceil((requiredPixelWidth - currentPixelWidth) / SUB_COLUMN_STRIDE);
+    sprintWidths.set(sprintPath, currentWidth + additionalCols);
+  }
+}
+
+/**
+ * Pre-measure all expanded groups and widen sprints whose pixel width is too
+ * narrow for any item placed inside them. Handles both top-level sprint items
+ * and direct children of multi-sprint parents.
+ */
+function widenSprintsForExpandedItems(
+  iterInfo: IterationInfo,
+  multiSprint: MultiSprintInfo,
+  workItemMap: Map<number, WorkItem>,
+  expandedParents: Set<number>,
+  doneStates: Set<string>,
+  withinSprintDepth: Map<number, number>,
+  multiSprintChildDepths: Map<number, number>,
+  sprintWidths: Map<string, number>,
+): void {
+  // Top-level items in each sprint (multi-sprint parents span multiple sprints
+  // and are sized by computeMultiSprintSpan, so skip them here)
+
+  iterInfo.iterationGroups.forEach((items, iterPath) => {
+    items
+      .filter((item) => !multiSprint.parentIds.has(item.id))
+      .forEach((item) =>
+        widenForItemIfNeeded(
+          item,
+          iterPath,
+          withinSprintDepth.get(item.id) ?? 0,
+          workItemMap,
+          expandedParents,
+          doneStates,
+          sprintWidths,
+        ),
+      );
+  });
+
+  // Direct children of multi-sprint parents (nested multi-sprint parents are
+  // sized by their own span, so skip them)
+  resolveWorkItemIds([...multiSprint.parentIds], workItemMap)
+    .flatMap((parent) => resolveWorkItemIds(parent.children, workItemMap))
+    .filter((child) => !multiSprint.parentIds.has(child.id))
+    .forEach((child) => {
+      widenForItemIfNeeded(
+        child,
+        getPlacementPath(child, workItemMap, iterInfo.iterationByPath),
+        multiSprintChildDepths.get(child.id) ?? 0,
+        workItemMap,
+        expandedParents,
+        doneStates,
+        sprintWidths,
+      );
+    });
+}
+
 /** Build the full column layout plan: effective column assignments, X positions, and column groupings. */
 function buildColumnPlan(
   iterInfo: IterationInfo,
   multiSprint: MultiSprintInfo,
   workItemMap: Map<number, WorkItem>,
+  expandedParents: Set<number>,
+  doneStates: Set<string>,
 ): ColumnPlan {
   const { withinSprintDepth, sprintWidths } = computeSprintDepths(iterInfo, workItemMap);
   const multiSprintChildDepths = computeMultiSprintChildDepths(
     multiSprint,
     workItemMap,
     iterInfo.iterationByPath,
+    sprintWidths,
+  );
+
+  widenSprintsForExpandedItems(
+    iterInfo,
+    multiSprint,
+    workItemMap,
+    expandedParents,
+    doneStates,
+    withinSprintDepth,
+    multiSprintChildDepths,
     sprintWidths,
   );
 
@@ -845,11 +950,7 @@ function computeChildPlacements(
 ): ChildPlacement[] {
   const placements: ChildPlacement[] = [];
   for (const child of directChildren) {
-    let placementPath = child.iteration_path;
-    if (child.children.length > 0) {
-      const childDescPaths = collectDescendantIterPaths(child, workItemMap);
-      placementPath = findEarliestPath(childDescPaths, iterationByPath);
-    }
+    const placementPath = getPlacementPath(child, workItemMap, iterationByPath);
     const depth = multiSprintChildDepths.get(child.id) ?? 0;
     const externalX = columnX.get(placementPath);
     const baseSlotX = isNil(externalX) ? GROUP_PADDING : externalX - minSpanX + GROUP_PADDING;
@@ -945,9 +1046,7 @@ function layoutExpandedMultiSprint(
   iterInfo: IterationInfo,
   ctx: RenderContext,
 ): number {
-  const directChildren = workItem.children
-    .map((childId) => ctx.workItemMap.get(childId))
-    .filter((childWorkItem): childWorkItem is WorkItem => childWorkItem !== undefined);
+  const directChildren = resolveWorkItemIds(workItem.children, ctx.workItemMap);
 
   const placements = computeChildPlacements(
     directChildren,
@@ -1301,7 +1400,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
 
   const multiSprint = identifyMultiSprintParents(work_items, workItemMap);
   const iterInfo = buildIterationInfo(work_items, iterations, multiSprint, workItemMap);
-  const plan = buildColumnPlan(iterInfo, multiSprint, workItemMap);
+  const plan = buildColumnPlan(iterInfo, multiSprint, workItemMap, expandedParents, doneStates);
   const columnCurrentY = layoutAllColumns(plan, multiSprint, iterInfo, ctx);
 
   createSprintDividers(iterInfo, plan, columnCurrentY, nodes);
