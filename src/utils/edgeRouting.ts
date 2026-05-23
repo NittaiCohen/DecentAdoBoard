@@ -283,15 +283,20 @@ export function routeLeftToRightEdge(
     const pivotY = destination.y + laneOffset;
     push({ x: pivotX, y: source.y });
     push({ x: pivotX, y: pivotY });
-    push({ x: destination.x, y: pivotY });
-    // When laneOffset shifts the approach away from the handle, add a final
-    // vertical segment to connect back to the actual destination handle.
     if (pivotY !== destination.y) {
-      push(destination);
+      const entryX = destination.x - EXIT_STUB_PX;
+      push({ x: entryX, y: pivotY });
+      push({ x: entryX, y: destination.y });
     }
+    push(destination);
   } else if (strategy === "elbow-srcY") {
+    const exitX = source.x + EXIT_STUB_PX;
     const pivotX = destination.x - EXIT_STUB_PX;
     const pivotY = source.y + laneOffset;
+    push({ x: exitX, y: source.y });
+    if (pivotY !== source.y) {
+      push({ x: exitX, y: pivotY });
+    }
     push({ x: pivotX, y: pivotY });
     push({ x: pivotX, y: destination.y });
     push(destination);
@@ -309,12 +314,12 @@ export function routeLeftToRightEdge(
       push({ x: gapCenterX, y: stepY });
       prevY = stepY;
     }
-    push({ x: destination.x, y: prevY });
-    // When laneOffset shifts the final step away from the handle, add a final
-    // vertical segment to connect back to the actual destination handle.
     if (prevY !== destination.y) {
-      push(destination);
+      const entryX = destination.x - EXIT_STUB_PX;
+      push({ x: entryX, y: prevY });
+      push({ x: entryX, y: destination.y });
     }
+    push(destination);
   }
 
   return buildRoundedPath(waypoints);
