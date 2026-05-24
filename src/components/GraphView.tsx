@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -25,13 +25,18 @@ import DragGhostComponent from "./DragGhost";
 import DependencyEdge from "./DependencyEdge";
 import { buildGraphLayout, buildNodePositions } from "../utils/graphLayout";
 import { assignLaneOffsets } from "../utils/edgeRouting";
-import { addDependency, removeDependency } from "../api/tauri";
 import { wouldCreateCycle } from "../utils/dependencies";
 import { useDragReorder } from "../hooks/useDragReorder";
 import { useExpandedParents } from "../hooks/useExpandedParents";
+import type { OperationContext, ReversibleOperation } from "../utils/reversibleOperations";
+import { applyOperation } from "../utils/reversibleOperations";
 
 interface GraphViewProps {
   boardData?: BoardData;
+  operationContextRef: React.RefObject<OperationContext | null>;
+  pushUndo: (op: ReversibleOperation) => void;
+  undo: () => void;
+  redo: () => void;
 }
 
 const nodeTypes: NodeTypes = {
@@ -45,10 +50,22 @@ const edgeTypes: EdgeTypes = {
   dependency: DependencyEdge,
 };
 
-export default function GraphView({ boardData }: GraphViewProps) {
+export default function GraphView({
+  boardData,
+  operationContextRef,
+  pushUndo,
+  undo,
+  redo,
+}: GraphViewProps) {
   return (
     <ReactFlowProvider>
-      <GraphViewInner boardData={boardData} />
+      <GraphViewInner
+        boardData={boardData}
+        operationContextRef={operationContextRef}
+        pushUndo={pushUndo}
+        undo={undo}
+        redo={redo}
+      />
     </ReactFlowProvider>
   );
 }
@@ -58,7 +75,7 @@ const MIN_ZOOM = 0.3;
 const MAX_ZOOM = 2;
 const ZOOM_FACTOR = 1.25;
 
-function GraphViewInner({ boardData }: GraphViewProps) {
+function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }: GraphViewProps) {
   const [expandedParents, handleToggleExpand] = useExpandedParents(boardData);
   const { setViewport, getViewport, fitView } = useReactFlow();
   const queryClient = useQueryClient();
@@ -72,81 +89,6 @@ function GraphViewInner({ boardData }: GraphViewProps) {
     }
     return map;
   }, [boardData]);
-
-  const handleConnect = useCallback(
-    (connection: Connection) => {
-      const sourceWiId = parseInt(connection.source.replace("wi-", ""), 10);
-      const targetWiId = parseInt(connection.target.replace("wi-", ""), 10);
-      if (isNaN(sourceWiId) || isNaN(targetWiId)) {
-        return;
-      }
-
-      if (wouldCreateCycle(sourceWiId, targetWiId, wiMap)) {
-        return;
-      }
-
-      void addDependency(sourceWiId, targetWiId);
-
-      queryClient.setQueryData<BoardData>(["boardData"], (old) => {
-        if (!old) {
-          return old;
-        }
-        return {
-          ...old,
-          work_items: old.work_items.map((wi) => {
-            if (wi.id === sourceWiId) {
-              return { ...wi, successors: [...wi.successors, targetWiId] };
-            }
-            if (wi.id === targetWiId) {
-              return { ...wi, predecessors: [...wi.predecessors, sourceWiId] };
-            }
-            return wi;
-          }),
-        };
-      });
-    },
-    [queryClient, wiMap],
-  );
-
-  const handleEdgesDelete = useCallback(
-    (deletedEdges: Edge[]) => {
-      deletedEdges.forEach((edge) => {
-        const match = /^edge-(\d+)-(\d+)$/.exec(edge.id);
-        if (!match) {
-          return;
-        }
-        const sourceWiId = parseInt(match[1], 10);
-        const targetWiId = parseInt(match[2], 10);
-
-        void removeDependency(sourceWiId, targetWiId);
-
-        queryClient.setQueryData<BoardData>(["boardData"], (old) => {
-          if (!old) {
-            return old;
-          }
-          return {
-            ...old,
-            work_items: old.work_items.map((wi) => {
-              if (wi.id === sourceWiId) {
-                return {
-                  ...wi,
-                  successors: wi.successors.filter((id) => id !== targetWiId),
-                };
-              }
-              if (wi.id === targetWiId) {
-                return {
-                  ...wi,
-                  predecessors: wi.predecessors.filter((id) => id !== sourceWiId),
-                };
-              }
-              return wi;
-            }),
-          };
-        });
-      });
-    },
-    [queryClient],
-  );
 
   const { nodes: layoutNodes, edges: layoutEdges } = useMemo(() => {
     if (!boardData) {
@@ -174,33 +116,6 @@ function GraphViewInner({ boardData }: GraphViewProps) {
     setEdges(layoutEdges);
   }, [layoutNodes, layoutEdges, setNodes, setEdges]);
 
-  // // Uncomment the body and import writeDebugLog from "../api/tauri" to re-enable layout snapshots.
-  // function debugCaptureLayoutSnapshot(nodes: Node[], data: BoardData): string {
-  //   const debugNodes = nodes.map((n) => {
-  //     const nodeData = n.data;
-  //     const wi = nodeData.workItem as Record<string, unknown> | undefined;
-  //     const title =
-  //       typeof nodeData.label === "string"
-  //         ? nodeData.label
-  //         : typeof wi?.title === "string"
-  //           ? wi.title
-  //           : typeof nodeData.iterationName === "string"
-  //             ? nodeData.iterationName
-  //             : "";
-  //     return {
-  //       id: n.id,
-  //       type: n.type ?? "unknown",
-  //       title,
-  //       x: Math.round(n.position.x),
-  //       y: Math.round(n.position.y),
-  //       w: typeof n.style?.width === "number" ? Math.round(n.style.width) : null,
-  //       h: typeof n.style?.height === "number" ? Math.round(n.style.height) : null,
-  //       parentId: n.parentId ?? null,
-  //     };
-  //   });
-  //   return JSON.stringify({ ts: new Date().toISOString(), iterations: data.iterations.length, nodes: debugNodes }, null, 2);
-  // }
-
   const handleDragSettled = useCallback(
     (finalNodes: Node[]) => {
       const nodePositions = buildNodePositions(finalNodes);
@@ -209,10 +124,70 @@ function GraphViewInner({ boardData }: GraphViewProps) {
     [setEdges],
   );
 
+  useEffect(() => {
+    operationContextRef.current = { queryClient, setNodes, onDragSettled: handleDragSettled };
+  });
+
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      const sourceId = parseInt(connection.source.replace("wi-", ""), 10);
+      const targetId = parseInt(connection.target.replace("wi-", ""), 10);
+      if (isNaN(sourceId) || isNaN(targetId)) {
+        return;
+      }
+
+      if (wouldCreateCycle(sourceId, targetId, wiMap)) {
+        return;
+      }
+
+      const ctx = operationContextRef.current;
+      if (!ctx) {
+        return;
+      }
+
+      const op: ReversibleOperation = {
+        type: "addDependencyRelation",
+        sourceId,
+        targetId,
+      };
+
+      applyOperation(op, ctx);
+      pushUndo(op);
+    },
+    [wiMap, pushUndo, operationContextRef],
+  );
+
+  const handleEdgesDelete = useCallback(
+    (deletedEdges: Edge[]) => {
+      const ctx = operationContextRef.current;
+      if (!ctx) {
+        return;
+      }
+      deletedEdges.forEach((edge) => {
+        const match = /^edge-(\d+)-(\d+)$/.exec(edge.id);
+        if (!match) {
+          return;
+        }
+        const sourceWiId = parseInt(match[1], 10);
+        const targetWiId = parseInt(match[2], 10);
+
+        const op: ReversibleOperation = {
+          type: "removeDependencyRelation",
+          sourceId: sourceWiId,
+          targetId: targetWiId,
+        };
+        applyOperation(op, ctx);
+        pushUndo(op);
+      });
+    },
+    [pushUndo, operationContextRef],
+  );
+
   const { handleNodeDragStart, handleNodeDrag, handleNodeDragStop } = useDragReorder(
     setNodes,
     wiMap,
     handleDragSettled,
+    pushUndo,
   );
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -279,7 +254,13 @@ function GraphViewInner({ boardData }: GraphViewProps) {
       if (!e.ctrlKey && !e.metaKey) {
         return;
       }
-      if (e.key === "=" || e.key === "+") {
+      if (e.key === "z") {
+        e.preventDefault();
+        undo();
+      } else if (e.key === "y") {
+        e.preventDefault();
+        redo();
+      } else if (e.key === "=" || e.key === "+") {
         e.preventDefault();
         handleZoomIn();
       } else if (e.key === "-") {
@@ -289,7 +270,7 @@ function GraphViewInner({ boardData }: GraphViewProps) {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleZoomIn, handleZoomOut]);
+  }, [handleZoomIn, handleZoomOut, undo, redo]);
 
   useEffect(() => {
     const el = containerRef.current;

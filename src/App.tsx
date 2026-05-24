@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import GraphView from "./components/GraphView";
 import ActionableSidebar from "./components/ActionableSidebar";
 import ThemeToggle from "./components/ThemeToggle";
@@ -8,6 +8,9 @@ import { useBoardData } from "./hooks/useAdoData";
 import { setConfig, checkAuth, logout } from "./api/tauri";
 import { getSavedConfig, clearConfig } from "./utils/storage";
 import type { BoardData } from "./types";
+import { useUndoRedo } from "./hooks/useUndoRedo";
+import { UndoRedoProvider } from "./contexts/UndoRedoContext";
+import type { OperationContext } from "./utils/reversibleOperations";
 import "./App.css";
 
 type AppStep = "pat" | "project" | "board";
@@ -103,32 +106,47 @@ function BoardView({
   onChangeProject: () => void;
   onSignOut: () => void;
 }) {
+  const operationContextRef = useRef<OperationContext>(null);
+  const { push: pushUndo, undo, redo } = useUndoRedo(operationContextRef);
+  const contextValue = useMemo(
+    () => ({ push: pushUndo, operationContextRef }),
+    [pushUndo, operationContextRef],
+  );
+
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-      <div className="flex-1 relative">
-        <GraphView boardData={boardData} />
-        <div className="absolute top-3 left-3 z-10 flex gap-2">
-          <button
-            onClick={onChangeProject}
-            className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium px-3 py-1.5 rounded shadow transition-colors"
-            title="Change project"
-          >
-            {"⚙ Change Project"}
-          </button>
-          <button
-            onClick={onSignOut}
-            className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium px-3 py-1.5 rounded shadow transition-colors"
-            title="Sign out"
-          >
-            {"⎋ Sign Out"}
-          </button>
+    <UndoRedoProvider value={contextValue}>
+      <div className="flex h-screen w-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+        <div className="flex-1 relative">
+          <GraphView
+            boardData={boardData}
+            operationContextRef={operationContextRef}
+            pushUndo={pushUndo}
+            undo={undo}
+            redo={redo}
+          />
+          <div className="absolute top-3 left-3 z-10 flex gap-2">
+            <button
+              onClick={onChangeProject}
+              className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium px-3 py-1.5 rounded shadow transition-colors"
+              title="Change project"
+            >
+              {"⚙ Change Project"}
+            </button>
+            <button
+              onClick={onSignOut}
+              className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium px-3 py-1.5 rounded shadow transition-colors"
+              title="Sign out"
+            >
+              {"⎋ Sign Out"}
+            </button>
+          </div>
+          <div className="absolute top-3 right-3 z-10">
+            <ThemeToggle />
+          </div>
         </div>
-        <div className="absolute top-3 right-3 z-10">
-          <ThemeToggle />
-        </div>
+        <ActionableSidebar isOpen={sidebarOpen} onToggle={onToggleSidebar} boardData={boardData} />
       </div>
-      <ActionableSidebar isOpen={sidebarOpen} onToggle={onToggleSidebar} boardData={boardData} />
-    </div>
+    </UndoRedoProvider>
   );
 }
 

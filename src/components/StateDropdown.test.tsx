@@ -25,13 +25,27 @@ vi.mock("../utils/storage", () => ({
 
 import StateDropdown from "./StateDropdown";
 import { getWorkItemTypeStates, updateWorkItemState } from "../api/tauri";
+import { UndoRedoProvider } from "../contexts/UndoRedoContext";
 
 function createWrapper(): ({ children }: { children: ReactNode }) => ReactNode {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  const mockContextValue = {
+    push: vi.fn(),
+    operationContextRef: {
+      current: {
+        queryClient,
+        setNodes: vi.fn(),
+      },
+    },
+  };
   return ({ children }: { children: ReactNode }) =>
-    createElement(QueryClientProvider, { client: queryClient }, children);
+    createElement(
+      QueryClientProvider,
+      { client: queryClient },
+      createElement(UndoRedoProvider, { value: mockContextValue }, children),
+    );
 }
 
 describe("StateDropdown", () => {

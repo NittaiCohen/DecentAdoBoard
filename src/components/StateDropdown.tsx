@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getWorkItemTypeStates, updateWorkItemState } from "../api/tauri";
+import { useQuery } from "@tanstack/react-query";
+import { getWorkItemTypeStates } from "../api/tauri";
 import { STATE_BADGES, DEFAULT_STATE_BADGE } from "../utils/workItemColors";
 import { getSavedConfig } from "../utils/storage";
+import { useUndoRedoPush } from "../contexts/UndoRedoContext";
+import { useOperationContext } from "../contexts/UndoRedoContext";
+import type { ReversibleOperation } from "../utils/reversibleOperations";
+import { applyOperation } from "../utils/reversibleOperations";
 
 const MENU_GAP_PX = 4;
 const FIVE_MINUTES_MS = 300_000;
@@ -24,7 +28,8 @@ export default function StateDropdown({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
-  const queryClient = useQueryClient();
+  const pushUndo = useUndoRedoPush();
+  const operationContextRef = useOperationContext();
 
   // Stay in sync when boardData refetches with authoritative data
   useEffect(() => {
@@ -46,14 +51,24 @@ export default function StateDropdown({
     staleTime: FIVE_MINUTES_MS,
   });
 
-  const mutation = useMutation({
-    mutationFn: (newState: string) => updateWorkItemState(workItemId, newState),
-    onSuccess: (_data, newState) => {
+  const changeState = useCallback(
+    (newState: string) => {
+      const ctx = operationContextRef.current;
+      if (!ctx) {
+        return;
+      }
+      const op: ReversibleOperation = {
+        type: "changeWorkItemState",
+        workItemId,
+        fromState: displayState,
+        toState: newState,
+      };
+      applyOperation(op, ctx);
+      pushUndo(op);
       setIsOpen(false);
-      setDisplayState(newState);
-      void queryClient.invalidateQueries({ queryKey: ["boardData"] });
     },
-  });
+    [workItemId, displayState, pushUndo, operationContextRef],
+  );
 
   const openDropdown = useCallback(() => {
     if (buttonRef.current) {
@@ -130,8 +145,7 @@ export default function StateDropdown({
             openDropdown();
           }
         }}
-        disabled={mutation.isPending}
-        className={`text-[10px] px-1 py-0.5 rounded cursor-pointer hover:ring-1 hover:ring-gray-400 dark:hover:ring-gray-500 transition-all ${stateClass} ${mutation.isPending ? "opacity-40 cursor-wait" : ""}`}
+        className={`text-[10px] px-1 py-0.5 rounded cursor-pointer hover:ring-1 hover:ring-gray-400 dark:hover:ring-gray-500 transition-all ${stateClass}`}
         title="Click to change state"
       >
         {displayState}
@@ -152,7 +166,7 @@ export default function StateDropdown({
             )}
 
             {states?.map((state) => {
-              const isActive = state.name === displayState;
+              const isSelected = state.name === displayState;
               const itemStateClass = STATE_BADGES[state.name] ?? DEFAULT_STATE_BADGE;
 
               return (
@@ -160,12 +174,12 @@ export default function StateDropdown({
                   key={state.name}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (!isActive && !mutation.isPending) {
-                      mutation.mutate(state.name);
+                    if (!isSelected) {
+                      changeState(state.name);
                     }
                   }}
-                  disabled={isActive || mutation.isPending}
-                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${isActive ? "opacity-50 cursor-default" : "cursor-pointer"}`}
+                  disabled={isSelected}
+                  className={`w-full text-left px-3 py-1.5 text-xs flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${isSelected ? "opacity-50 cursor-default" : "cursor-pointer"}`}
                 >
                   <span
                     className="w-2.5 h-2.5 rounded-full flex-shrink-0"
@@ -175,12 +189,6 @@ export default function StateDropdown({
                 </button>
               );
             })}
-
-            {mutation.isError && (
-              <div className="px-3 py-1.5 text-[10px] text-red-600 dark:text-red-400 border-t border-gray-200 dark:border-gray-700">
-                {`Error: ${String(mutation.error)}`}
-              </div>
-            )}
           </div>,
           document.body,
         )}

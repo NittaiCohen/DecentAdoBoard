@@ -4,6 +4,8 @@ import { isNil } from "lodash-es";
 import type { Node } from "@xyflow/react";
 import type { WorkItem } from "../types";
 import { NODE_HEIGHT, NODE_GAP_Y } from "../utils/graphLayout";
+import type { ReversibleOperation } from "../utils/reversibleOperations";
+import { capturePositions } from "../utils/reversibleOperations";
 
 const SUB_COLUMN_WIDTH_FALLBACK = 280;
 const GHOST_NODE_ID = "__drag-ghost__";
@@ -490,10 +492,12 @@ export function useDragReorder(
   setNodes: SetNodes,
   wiMap: Map<number, WorkItem>,
   onDragSettled?: (finalNodes: Node[]) => void,
+  onUndoPush?: (op: ReversibleOperation) => void,
 ) {
   const dragRef = useRef<DragState | null>(null);
   const rafRef = useRef(0);
   const wiMapRef = useRef(wiMap);
+  const preDragPositionsRef = useRef<ReturnType<typeof capturePositions>>(new Map());
 
   useEffect(() => {
     wiMapRef.current = wiMap;
@@ -508,6 +512,7 @@ export function useDragReorder(
   const handleNodeDragStart = useCallback(
     (_event: React.MouseEvent, draggedNode: Node) => {
       setNodes((prev) => {
+        preDragPositionsRef.current = capturePositions(prev);
         const state = buildDragStartState(prev, draggedNode, wiMapRef.current);
         dragRef.current = state;
         return buildDragStartNodes(prev, state, draggedNode);
@@ -537,14 +542,25 @@ export function useDragReorder(
     (_event: React.MouseEvent, draggedNode: Node) => {
       cancelAnimationFrame(rafRef.current);
       const state = dragRef.current;
+      const beforePositions = preDragPositionsRef.current;
       setNodes((prev) => {
         const finalNodes = buildDragStopNodes(prev, state, draggedNode);
         onDragSettled?.(finalNodes);
+
+        if (onUndoPush) {
+          const afterPositions = capturePositions(finalNodes);
+          onUndoPush({
+            type: "moveNodes",
+            before: beforePositions,
+            after: afterPositions,
+          });
+        }
+
         return finalNodes;
       });
       dragRef.current = null;
     },
-    [setNodes, onDragSettled],
+    [setNodes, onDragSettled, onUndoPush],
   );
 
   return { handleNodeDragStart, handleNodeDrag, handleNodeDragStop };
