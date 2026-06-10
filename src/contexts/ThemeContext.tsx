@@ -1,7 +1,7 @@
 import { createContext, useState, useEffect, useCallback } from "react";
 import type { ReactNode } from "react";
 
-type ThemePreference = "system" | "light" | "dark";
+export type ThemePreference = "system" | "light" | "dark";
 type ResolvedTheme = "light" | "dark";
 
 interface ThemeContextValue {

@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useMemo } from "react";
 import GraphView from "./components/GraphView";
 import ActionableSidebar from "./components/ActionableSidebar";
-import ThemeToggle from "./components/ThemeToggle";
+import HamburgerMenu from "./components/HamburgerMenu";
 import { MicrosoftLogin } from "./components/MicrosoftLogin";
 import ProjectSelector from "./components/ProjectSelector";
 import { useBoardData } from "./hooks/useAdoData";
@@ -124,25 +124,7 @@ function BoardView({
             undo={undo}
             redo={redo}
           />
-          <div className="absolute top-3 left-3 z-10 flex gap-2">
-            <button
-              onClick={onChangeProject}
-              className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium px-3 py-1.5 rounded shadow transition-colors"
-              title="Change project"
-            >
-              {"⚙ Change Project"}
-            </button>
-            <button
-              onClick={onSignOut}
-              className="bg-gray-200 dark:bg-gray-700 hover:bg-gray-300 dark:hover:bg-gray-600 text-gray-700 dark:text-gray-300 text-xs font-medium px-3 py-1.5 rounded shadow transition-colors"
-              title="Sign out"
-            >
-              {"⎋ Sign Out"}
-            </button>
-          </div>
-          <div className="absolute top-3 right-3 z-10">
-            <ThemeToggle />
-          </div>
+          <HamburgerMenu onChangeProject={onChangeProject} onSignOut={onSignOut} />
         </div>
         <ActionableSidebar isOpen={sidebarOpen} onToggle={onToggleSidebar} boardData={boardData} />
       </div>
