@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useKeyDown } from "../hooks/useKeyDown";
 import { createPortal } from "react-dom";
 import { useQuery } from "@tanstack/react-query";
 import { getWorkItemTypeStates } from "../api/tauri";
@@ -115,21 +116,8 @@ export default function StateDropdown({
     };
   }, [isOpen]);
 
-  // Close dropdown on Escape
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    function handleKeyDown(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        setIsOpen(false);
-      }
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen]);
+  const closeDropdown = useCallback(() => setIsOpen(false), []);
+  useKeyDown("Escape", closeDropdown, { enabled: isOpen, preventDefault: false });
 
   const stateClass = STATE_BADGES[displayState] ?? DEFAULT_STATE_BADGE;
 

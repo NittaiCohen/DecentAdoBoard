@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
+import { useKeyDown } from "../hooks/useKeyDown";
 import {
   Background,
   BackgroundVariant,
@@ -249,28 +250,16 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
     zoomToCenter(Math.max(MIN_ZOOM, zoom / ZOOM_FACTOR));
   }, [getViewport, zoomToCenter]);
 
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!e.ctrlKey && !e.metaKey) {
-        return;
-      }
-      if (e.key === "z") {
-        e.preventDefault();
-        undo();
-      } else if (e.key === "y") {
-        e.preventDefault();
-        redo();
-      } else if (e.key === "=" || e.key === "+") {
-        e.preventDefault();
-        handleZoomIn();
-      } else if (e.key === "-") {
-        e.preventDefault();
-        handleZoomOut();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [handleZoomIn, handleZoomOut, undo, redo]);
+  useKeyDown({ key: "z", modifiers: ["ctrl"] }, undo);
+  useKeyDown({ key: "y", modifiers: ["ctrl"] }, redo);
+  useKeyDown(
+    [
+      { key: "=", modifiers: ["ctrl"] },
+      { key: "+", modifiers: ["ctrl"] },
+    ],
+    handleZoomIn,
+  );
+  useKeyDown({ key: "-", modifiers: ["ctrl"] }, handleZoomOut);
 
   useEffect(() => {
     const el = containerRef.current;
