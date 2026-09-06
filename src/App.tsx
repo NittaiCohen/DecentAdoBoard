@@ -63,10 +63,14 @@ function isAuthError(error: unknown): boolean {
 }
 
 /** Hook that restores a previous session by validating backend auth and re-sending saved config. */
-function useRestoreSession(setStep: (step: AppStep) => void) {
-  const [restoring, setRestoring] = useState(true);
+function useRestoreSession(setStep: (step: AppStep) => void, enabled: boolean) {
+  const [restoring, setRestoring] = useState(enabled);
 
   useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     async function restore() {
       const authenticated = await checkAuth().catch(() => false);
       if (!authenticated) {
@@ -88,7 +92,7 @@ function useRestoreSession(setStep: (step: AppStep) => void) {
       setRestoring(false);
     }
     void restore();
-  }, [setStep]);
+  }, [enabled, setStep]);
 
   return restoring;
 }
@@ -136,9 +140,16 @@ function App() {
   const [step, setStep] = useState<AppStep>("pat");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const restoring = useRestoreSession(setStep);
+  const restoring = useRestoreSession(setStep, true);
 
-  const { data: boardData, isLoading, error } = useBoardData(step === "board");
+  const {
+    data: fetchedBoardData,
+    isLoading: isBoardDataLoading,
+    error: boardDataError,
+  } = useBoardData(step === "board");
+  const boardData = fetchedBoardData;
+  const isLoading = isBoardDataLoading;
+  const error = boardDataError;
 
   useEffect(() => {
     if (step !== "board" || !error || !isAuthError(error)) {
