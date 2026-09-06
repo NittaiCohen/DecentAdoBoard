@@ -31,7 +31,11 @@ import { assignLaneOffsets } from "../utils/edgeRouting";
 import { wouldCreateCycle } from "../utils/dependencies";
 import { useDragReorder } from "../hooks/useDragReorder";
 import { useExpandedParents } from "../hooks/useExpandedParents";
-import type { OperationContext, ReversibleOperation } from "../utils/reversibleOperations";
+import type {
+  IterationChange,
+  OperationContext,
+  ReversibleOperation,
+} from "../utils/reversibleOperations";
 import { applyOperation } from "../utils/reversibleOperations";
 
 interface GraphViewProps {
@@ -154,20 +158,24 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
   );
 
   const handleSprintChange = useCallback(
-    (workItemId: number, iterationPath: string) => {
-      const workItem = wiMap.get(workItemId);
+    (iterationChanges: IterationChange[]) => {
       const ctx = operationContextRef.current;
-      if (!workItem || !ctx || workItem.iteration_path === iterationPath) {
+      if (!ctx) {
         return;
       }
 
-      const op: ReversibleOperation = {
-        type: "changeWorkItemIteration",
-        workItemId,
-        fromIterationPath: workItem.iteration_path,
-        toIterationPath: iterationPath,
-      };
-      applyOperation(op, ctx);
+      iterationChanges
+        .filter((iterationChange) => {
+          const workItem = wiMap.get(iterationChange.workItemId);
+          return workItem && workItem.iteration_path !== iterationChange.toIterationPath;
+        })
+        .map(
+          (iterationChange): ReversibleOperation => ({
+            ...iterationChange,
+            type: "changeWorkItemIteration",
+          }),
+        )
+        .forEach((operation) => applyOperation(operation, ctx));
     },
     [wiMap, operationContextRef],
   );

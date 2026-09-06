@@ -70,11 +70,20 @@ describe("useUndoRedo", () => {
     const { result } = renderHook(() => useUndoRedo(contextRef));
     const operation: ReversibleOperation = {
       type: "moveWorkItem",
-      workItemId: 42,
       before: new Map([["wi-42", { x: 100, y: 100 }]]),
       after: new Map([["wi-42", { x: 900, y: 300 }]]),
-      fromIterationPath: "Project\\Sprint 1",
-      toIterationPath: "Project\\Sprint 2",
+      iterationChanges: [
+        {
+          workItemId: 42,
+          fromIterationPath: "Project\\Sprint 1",
+          toIterationPath: "Project\\Sprint 2",
+        },
+        {
+          workItemId: 43,
+          fromIterationPath: "Project\\Sprint 1",
+          toIterationPath: "Project\\Sprint 2",
+        },
+      ],
     };
 
     vi.mocked(updateWorkItemIteration).mockClear();
@@ -82,6 +91,7 @@ describe("useUndoRedo", () => {
     act(() => result.current.undo());
 
     expect(updateWorkItemIteration).toHaveBeenCalledWith(42, "Project\\Sprint 1");
+    expect(updateWorkItemIteration).toHaveBeenCalledWith(43, "Project\\Sprint 1");
     expect(contextRef.current?.setNodes).toHaveBeenCalledTimes(1);
   });
 

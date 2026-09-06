@@ -39,11 +39,12 @@ export type ReversibleOperation =
   | { type: "removeDependencyRelation"; sourceId: number; targetId: number }
   | { type: "changeWorkItemState"; workItemId: number; fromState: string; toState: string }
   | ({ type: "changeWorkItemIteration" } & IterationChange)
-  | ({
+  | {
       type: "moveWorkItem";
       before: NodePositionSnapshot;
       after: NodePositionSnapshot;
-    } & IterationChange)
+      iterationChanges: IterationChange[];
+    }
   | { type: "moveNodes"; before: NodePositionSnapshot; after: NodePositionSnapshot };
 
 export function reverseOperation(op: ReversibleOperation): ReversibleOperation {
@@ -69,11 +70,13 @@ export function reverseOperation(op: ReversibleOperation): ReversibleOperation {
     case "moveWorkItem":
       return {
         type: "moveWorkItem",
-        workItemId: op.workItemId,
         before: op.after,
         after: op.before,
-        fromIterationPath: op.toIterationPath,
-        toIterationPath: op.fromIterationPath,
+        iterationChanges: op.iterationChanges.map((iterationChange) => ({
+          workItemId: iterationChange.workItemId,
+          fromIterationPath: iterationChange.toIterationPath,
+          toIterationPath: iterationChange.fromIterationPath,
+        })),
       };
     case "moveNodes":
       return { type: "moveNodes", before: op.after, after: op.before };
@@ -206,7 +209,13 @@ export function applyOperation(op: ReversibleOperation, context: OperationContex
       break;
     }
     case "moveWorkItem": {
-      applyChangeWorkItemIteration(op.workItemId, op.toIterationPath, context.queryClient);
+      op.iterationChanges.forEach((iterationChange) => {
+        applyChangeWorkItemIteration(
+          iterationChange.workItemId,
+          iterationChange.toIterationPath,
+          context.queryClient,
+        );
+      });
       context.setNodes((current) => {
         const restored = applyPositionSnapshot(current, op.after);
         context.onDragSettled?.(restored);

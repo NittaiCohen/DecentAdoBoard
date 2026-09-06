@@ -539,46 +539,67 @@ export function buildDragStopNodes(
     .map((node) => finalizeNodePosition(node, finalizeOptions));
 }
 
-function getIterationChange(
+export function getIterationChanges(
   draggedNode: Node,
   state: DragState | null,
   wiMap: Map<number, WorkItem>,
-): IterationChange | undefined {
+): IterationChange[] {
   const workItemId = extractWorkItemId(draggedNode.id);
   if (workItemId === undefined) {
-    return undefined;
+    return [];
   }
 
-  const fromIterationPath = wiMap.get(workItemId)?.iteration_path;
+  const draggedWorkItem = wiMap.get(workItemId);
   const toIterationPath =
     state === null
       ? undefined
       : findIterationPath(draggedNode.position.x, state.sprintRanges ?? []);
 
-  if (
-    fromIterationPath === undefined ||
-    toIterationPath === undefined ||
-    toIterationPath === fromIterationPath
-  ) {
-    return undefined;
+  if (!draggedWorkItem || toIterationPath === undefined) {
+    return [];
   }
 
-  return { workItemId, fromIterationPath, toIterationPath };
+  const iterationChanges: IterationChange[] = [];
+  const pendingWorkItemIds = [draggedWorkItem.id];
+  const visitedWorkItemIds = new Set<number>();
+
+  while (pendingWorkItemIds.length > 0) {
+    const currentWorkItemId = pendingWorkItemIds.shift();
+    if (currentWorkItemId === undefined || visitedWorkItemIds.has(currentWorkItemId)) {
+      continue;
+    }
+    visitedWorkItemIds.add(currentWorkItemId);
+
+    const currentWorkItem = wiMap.get(currentWorkItemId);
+    if (!currentWorkItem) {
+      continue;
+    }
+
+    if (currentWorkItem.iteration_path !== toIterationPath) {
+      iterationChanges.push({
+        workItemId: currentWorkItem.id,
+        fromIterationPath: currentWorkItem.iteration_path,
+        toIterationPath,
+      });
+    }
+
+    pendingWorkItemIds.push(...currentWorkItem.children);
+  }
+
+  return iterationChanges;
 }
 
 function buildDragUndoOperation(
   before: ReturnType<typeof capturePositions>,
   after: ReturnType<typeof capturePositions>,
-  iterationChange: IterationChange | undefined,
+  iterationChanges: IterationChange[],
 ): ReversibleOperation {
-  if (iterationChange) {
+  if (iterationChanges.length > 0) {
     return {
       type: "moveWorkItem",
-      workItemId: iterationChange.workItemId,
       before,
       after,
-      fromIterationPath: iterationChange.fromIterationPath,
-      toIterationPath: iterationChange.toIterationPath,
+      iterationChanges,
     };
   }
 
@@ -595,7 +616,7 @@ interface FinishDragOptions {
   wiMap: Map<number, WorkItem>;
   onDragSettled?: (finalNodes: Node[]) => void;
   onUndoPush?: (op: ReversibleOperation) => void;
-  onSprintChange?: (workItemId: number, iterationPath: string) => void;
+  onSprintChange?: (iterationChanges: IterationChange[]) => void;
 }
 
 function finishDrag({
@@ -616,14 +637,14 @@ function finishDrag({
     const finalNodes = buildDragStopNodes(prev, state, constrainedNode);
     onDragSettled?.(finalNodes);
 
-    const iterationChange = getIterationChange(constrainedNode, state, wiMap);
-    if (iterationChange) {
-      onSprintChange?.(iterationChange.workItemId, iterationChange.toIterationPath);
+    const iterationChanges = getIterationChanges(constrainedNode, state, wiMap);
+    if (iterationChanges.length > 0) {
+      onSprintChange?.(iterationChanges);
     }
 
     if (onUndoPush) {
       const afterPositions = capturePositions(finalNodes);
-      onUndoPush(buildDragUndoOperation(beforePositions, afterPositions, iterationChange));
+      onUndoPush(buildDragUndoOperation(beforePositions, afterPositions, iterationChanges));
     }
 
     return finalNodes;
@@ -637,7 +658,7 @@ export function useDragReorder(
   wiMap: Map<number, WorkItem>,
   onDragSettled?: (finalNodes: Node[]) => void,
   onUndoPush?: (op: ReversibleOperation) => void,
-  onSprintChange?: (workItemId: number, iterationPath: string) => void,
+  onSprintChange?: (iterationChanges: IterationChange[]) => void,
 ) {
   const dragRef = useRef<DragState | null>(null);
   const rafRef = useRef(0);

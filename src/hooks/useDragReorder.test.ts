@@ -9,6 +9,7 @@ import {
   constrainDragPosition,
   computeInsertIndex,
   extractWorkItemId,
+  getIterationChanges,
   type DragState,
 } from "./useDragReorder";
 import { NODE_GAP_Y, NODE_HEIGHT } from "../utils/graphLayout";
@@ -114,6 +115,68 @@ describe("collectSuccessorChain", () => {
     ]);
 
     expect(collectSuccessorChain(1, workItemMap, nodeMap)).toEqual(new Set(["wi-2"]));
+  });
+});
+
+describe("getIterationChanges", () => {
+  it("moves the dragged work item and all descendants to the target sprint", () => {
+    const parent = generateWorkItem({
+      id: 1,
+      type: "Product Backlog Item",
+      iteration_path: "Project\\Sprint 1",
+      children: [2, 3],
+    });
+    const child = generateWorkItem({
+      id: 2,
+      parent_id: 1,
+      iteration_path: "Project\\Sprint 1",
+      children: [4],
+    });
+    const grandchild = generateWorkItem({
+      id: 4,
+      parent_id: 2,
+      iteration_path: "Project\\Sprint 1",
+    });
+    const childAlreadyInTargetSprint = generateWorkItem({
+      id: 3,
+      parent_id: 1,
+      iteration_path: "Project\\Sprint 2",
+    });
+    const state = generateDragState({
+      sprintRanges: [
+        { iterationPath: "Project\\Sprint 1", left: 0, right: 400 },
+        { iterationPath: "Project\\Sprint 2", left: 400, right: 800 },
+      ],
+    });
+
+    expect(
+      getIterationChanges(
+        mockNode("wi-1", 500),
+        state,
+        new Map([
+          [parent.id, parent],
+          [child.id, child],
+          [grandchild.id, grandchild],
+          [childAlreadyInTargetSprint.id, childAlreadyInTargetSprint],
+        ]),
+      ),
+    ).toEqual([
+      {
+        workItemId: 1,
+        fromIterationPath: "Project\\Sprint 1",
+        toIterationPath: "Project\\Sprint 2",
+      },
+      {
+        workItemId: 2,
+        fromIterationPath: "Project\\Sprint 1",
+        toIterationPath: "Project\\Sprint 2",
+      },
+      {
+        workItemId: 4,
+        fromIterationPath: "Project\\Sprint 1",
+        toIterationPath: "Project\\Sprint 2",
+      },
+    ]);
   });
 });
 
