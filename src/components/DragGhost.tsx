@@ -1,8 +1,9 @@
 import { memo } from "react";
 import type { NodeProps, Node } from "@xyflow/react";
 import type { DragGhostData } from "../utils/graphLayout";
+import type { BOARD_NODE_TYPES } from "../types/graph";
 
-export type DragGhostNode = Node<DragGhostData, "dragGhost">;
+export type DragGhostNode = Node<DragGhostData, typeof BOARD_NODE_TYPES.dragGhost>;
 
 function DragGhostComponent({ data }: NodeProps<DragGhostNode>) {
   return (

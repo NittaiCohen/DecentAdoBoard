@@ -4,6 +4,7 @@ import type { BoardData, Iteration, WorkItem } from "../types";
 import type { WorkItemNodeData } from "../components/WorkItemNode";
 import type { SprintDividerData } from "../components/SprintDivider";
 import type { ParentGroupData } from "../components/ParentGroup";
+import { BOARD_NODE_TYPES, isBoardNodeType, type BoardNodeType } from "../types/graph";
 import { computeActionableSet, DONE_STATES } from "./actionable";
 import { mapBy } from "./collections";
 import { assignLaneOffsets } from "./edgeRouting";
@@ -22,6 +23,7 @@ export interface NodePosition {
   y: number;
   width: number;
   height: number;
+  type?: BoardNodeType;
 }
 
 type AnyNodeData = WorkItemNodeData | SprintDividerData | ParentGroupData | DragGhostData;
@@ -35,7 +37,7 @@ type CoordExtent = [[number, number], [number, number]];
 
 interface LayoutNode {
   id: string;
-  type: string;
+  type: BoardNodeType;
   position: { x: number; y: number };
   data: AnyNodeData;
   parentId?: string;
@@ -356,7 +358,7 @@ function renderChildNodes(layout: GroupLayout, groupId: string, ctx: RenderConte
       ctx.nodeIdMap.set(child.id, childNodeId);
       ctx.nodes.push({
         id: childNodeId,
-        type: "workItem",
+        type: BOARD_NODE_TYPES.workItem,
         position: { x: placement.x, y: placement.y },
         parentId: groupId,
         extent: "parent",
@@ -391,7 +393,7 @@ function renderExpandedGroup(
 
   const node: LayoutNode = {
     id: groupId,
-    type: "parentGroup",
+    type: BOARD_NODE_TYPES.parentGroup,
     position: { x, y },
     data: {
       label: workItem.title,
@@ -1033,7 +1035,7 @@ function renderMultiSprintChildren(
       ctx.nodeIdMap.set(child.id, childNodeId);
       ctx.nodes.push({
         id: childNodeId,
-        type: "workItem",
+        type: BOARD_NODE_TYPES.workItem,
         position: { x: slotX, y: childY },
         parentId: groupId,
         extent: slotExtent,
@@ -1113,7 +1115,7 @@ function layoutExpandedMultiSprint(
 
   const groupNode: LayoutNode = {
     id: groupId,
-    type: "parentGroup",
+    type: BOARD_NODE_TYPES.parentGroup,
     position: { x: span.minSpanX, y: currentY },
     data: {
       label: workItem.title,
@@ -1160,7 +1162,7 @@ function layoutCollapsedMultiSprint(
 
   ctx.nodes.push({
     id: groupId,
-    type: "parentGroup",
+    type: BOARD_NODE_TYPES.parentGroup,
     position: { x: span.minSpanX, y: currentY },
     data: {
       label: workItem.title,
@@ -1246,7 +1248,7 @@ function layoutRegularItem(
   ];
   ctx.nodes.push({
     id: nodeId,
-    type: "workItem",
+    type: BOARD_NODE_TYPES.workItem,
     position: { x: colX, y: currentY },
     extent: extentBounds,
     data: {
@@ -1350,9 +1352,10 @@ function createSprintDividers(
 
     nodes.push({
       id: `sprint-${iterPath}`,
-      type: "sprintDivider",
+      type: BOARD_NODE_TYPES.sprintDivider,
       position: { x: colStartX - SPRINT_PADDING / 2, y: 0 },
       data: {
+        iterationPath: iterPath,
         label: iterName,
         startDate: iterInfo2?.start_date ?? null,
         finishDate: iterInfo2?.finish_date ?? null,
@@ -1418,9 +1421,10 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
     sortedIterations.forEach((iteration, index) => {
       nodes.push({
         id: `sprint-${iteration.path}`,
-        type: "sprintDivider",
+        type: BOARD_NODE_TYPES.sprintDivider,
         position: { x: index * (MIN_COLUMN_WIDTH + NODE_GAP_X) + SPRINT_PADDING / 2, y: 0 },
         data: {
+          iterationPath: iteration.path,
           label: iteration.path.split("\\").pop() ?? iteration.path,
           startDate: iteration.start_date,
           finishDate: iteration.finish_date,
@@ -1470,6 +1474,7 @@ export function buildNodePositions(
     parentId?: string;
     style?: { width?: string | number; height?: string | number };
     measured?: { width?: number; height?: number };
+    type?: string;
   }[],
 ): { positions: Map<string, NodePosition>; parentMap: Map<string, string> } {
   const nodeById = new Map<string, (typeof nodes)[number]>();
@@ -1490,12 +1495,13 @@ export function buildNodePositions(
       absY += current.position.y;
       current = current.parentId ? nodeById.get(current.parentId) : undefined;
     }
-    const defaultWidth = node.id.startsWith("wi-") ? CHILD_WIDTH : SUB_COLUMN_WIDTH;
+    const defaultWidth = node.type === BOARD_NODE_TYPES.workItem ? CHILD_WIDTH : SUB_COLUMN_WIDTH;
     const width =
       node.measured?.width ?? (node.style?.width ? Number(node.style.width) : defaultWidth);
     const height =
       node.measured?.height ?? (node.style?.height ? Number(node.style.height) : NODE_HEIGHT);
-    positions.set(node.id, { x: absX, y: absY, width, height });
+    const nodeType = isBoardNodeType(node.type) ? node.type : undefined;
+    positions.set(node.id, { x: absX, y: absY, width, height, type: nodeType });
   });
   return { positions, parentMap };
 }

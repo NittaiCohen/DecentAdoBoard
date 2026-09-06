@@ -1,6 +1,7 @@
 import type { Edge } from "@xyflow/react";
 import type { Point } from "../types";
 import type { NodePosition } from "./graphLayout";
+import { BOARD_NODE_TYPES } from "../types/graph";
 
 // Inline constant to avoid circular dependency (pathfinding → graphLayout → edgeRouting → pathfinding).
 // Value must match graphLayout.ts: NODE_GAP_X = 60.
@@ -98,7 +99,10 @@ export function buildObstacles(
       continue;
     }
     // Only work item and group nodes are obstacles — skip dividers, ghosts, etc.
-    if (!id.startsWith("wi-") && !id.startsWith("group-")) {
+    if (
+      position.type !== BOARD_NODE_TYPES.workItem &&
+      position.type !== BOARD_NODE_TYPES.parentGroup
+    ) {
       continue;
     }
     obstacles.push({

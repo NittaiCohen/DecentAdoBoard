@@ -25,6 +25,7 @@ import ParentGroupComponent from "./ParentGroup";
 import DragGhostComponent from "./DragGhost";
 import DependencyEdge from "./DependencyEdge";
 import DebugObstacles from "./DebugObstacles";
+import { BOARD_NODE_TYPES } from "../types/graph";
 import { buildGraphLayout, buildNodePositions } from "../utils/graphLayout";
 import { assignLaneOffsets } from "../utils/edgeRouting";
 import { wouldCreateCycle } from "../utils/dependencies";
@@ -108,7 +109,7 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
 
     return {
       nodes: result.nodes.map((n) => {
-        if (n.type === "workItem" || n.type === "parentGroup") {
+        if (n.type === BOARD_NODE_TYPES.workItem || n.type === BOARD_NODE_TYPES.parentGroup) {
           return { ...n, data: { ...n.data, onToggleExpand: handleToggleExpand } };
         }
         return n;

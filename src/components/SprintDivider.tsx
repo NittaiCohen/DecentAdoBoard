@@ -1,7 +1,9 @@
 import { memo } from "react";
 import { type NodeProps, type Node } from "@xyflow/react";
+import type { BOARD_NODE_TYPES } from "../types/graph";
 
 export interface SprintDividerData extends Record<string, unknown> {
+  iterationPath: string;
   label: string;
   startDate: string | null;
   finishDate: string | null;
@@ -10,7 +12,7 @@ export interface SprintDividerData extends Record<string, unknown> {
   isCurrent: boolean;
 }
 
-export type SprintDividerNode = Node<SprintDividerData, "sprintDivider">;
+export type SprintDividerNode = Node<SprintDividerData, typeof BOARD_NODE_TYPES.sprintDivider>;
 
 function SprintDividerComponent({ data }: NodeProps<SprintDividerNode>) {
   const bgClass = data.isCurrent

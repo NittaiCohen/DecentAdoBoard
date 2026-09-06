@@ -2,6 +2,7 @@ import { memo } from "react";
 import { Handle, Position, useStore, type NodeProps, type Node } from "@xyflow/react";
 
 import StateDropdown from "./StateDropdown";
+import type { BOARD_NODE_TYPES } from "../types/graph";
 
 export interface ParentGroupData extends Record<string, unknown> {
   label: string;
@@ -15,7 +16,7 @@ export interface ParentGroupData extends Record<string, unknown> {
   onToggleExpand?: (id: number) => void;
 }
 
-export type ParentGroupNode = Node<ParentGroupData, "parentGroup">;
+export type ParentGroupNode = Node<ParentGroupData, typeof BOARD_NODE_TYPES.parentGroup>;
 
 const TYPE_COLORS: Record<string, string> = {
   Bug: "border-red-400/60 dark:border-red-600/60 border-l-red-500 bg-red-100/30 dark:bg-red-950/30",

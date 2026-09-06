@@ -3,6 +3,7 @@ import type React from "react";
 import { isNil } from "lodash-es";
 import type { Node } from "@xyflow/react";
 import type { WorkItem } from "../types";
+import { BOARD_NODE_TYPES } from "../types/graph";
 import { NODE_HEIGHT, NODE_GAP_Y } from "../utils/graphLayout";
 import type { ReversibleOperation } from "../utils/reversibleOperations";
 import { capturePositions } from "../utils/reversibleOperations";
@@ -401,7 +402,7 @@ function finalizeNodePosition<T extends Node>(node: T, options: FinalizeNodeOpti
 export function buildDragStartNodes(prev: Node[], state: DragState, draggedNode: Node): Node[] {
   const ghostNode = {
     id: GHOST_NODE_ID,
-    type: "dragGhost",
+    type: BOARD_NODE_TYPES.dragGhost,
     position: { ...draggedNode.position },
     parentId: state.draggedParent,
     data: { width: state.draggedWidth, height: state.draggedHeight },

@@ -22,6 +22,7 @@ import {
   TURN_PENALTY,
 } from "./pathfinding";
 import type { Obstacle, RouteResult } from "./pathfinding";
+import { BOARD_NODE_TYPES } from "../types/graph";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -50,7 +51,7 @@ function makeNodePosition(
   width = SUB_COLUMN_WIDTH,
   height = 80,
 ): NodePosition {
-  return { x, y, width, height };
+  return { x, y, width, height, type: BOARD_NODE_TYPES.workItem };
 }
 
 // ── buildObstacles ───────────────────────────────────────────────────────────

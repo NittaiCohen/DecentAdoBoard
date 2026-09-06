@@ -1,11 +1,9 @@
 import { memo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import type { WorkItem } from "../types";
-import {
-  TYPE_COLORS,
-  DEFAULT_TYPE_COLOR,
-} from "../utils/workItemColors";
+import { TYPE_COLORS, DEFAULT_TYPE_COLOR } from "../utils/workItemColors";
 import StateDropdown from "./StateDropdown";
+import type { BOARD_NODE_TYPES } from "../types/graph";
 
 export interface WorkItemNodeData extends Record<string, unknown> {
   workItem: WorkItem;
@@ -17,7 +15,7 @@ export interface WorkItemNodeData extends Record<string, unknown> {
   onToggleExpand?: (id: number) => void;
 }
 
-export type WorkItemNode = Node<WorkItemNodeData, "workItem">;
+export type WorkItemNode = Node<WorkItemNodeData, typeof BOARD_NODE_TYPES.workItem>;
 
 function WorkItemHeader({ data }: { data: WorkItemNodeData }) {
   const { workItem, isParent, isExpanded, childCount, doneChildCount, onToggleExpand } = data;

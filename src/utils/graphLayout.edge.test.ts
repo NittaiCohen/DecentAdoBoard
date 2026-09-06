@@ -38,7 +38,7 @@ function board(work_items: WorkItem[], iterations: Iteration[] = [sprint1]): Boa
 }
 
 function workItemNodes(result: ReturnType<typeof buildGraphLayout>) {
-  return result.nodes.filter((node) => node.id.startsWith("wi-") && node.type === "workItem");
+  return result.nodes.filter((node) => node.type === "workItem");
 }
 
 describe("buildGraphLayout edge cases", () => {
