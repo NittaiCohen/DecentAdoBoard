@@ -24,6 +24,7 @@ import SprintDividerComponent from "./SprintDivider";
 import ParentGroupComponent from "./ParentGroup";
 import DragGhostComponent from "./DragGhost";
 import DependencyEdge from "./DependencyEdge";
+import DebugObstacles from "./DebugObstacles";
 import { buildGraphLayout, buildNodePositions } from "../utils/graphLayout";
 import { assignLaneOffsets } from "../utils/edgeRouting";
 import { wouldCreateCycle } from "../utils/dependencies";
@@ -51,6 +52,9 @@ const edgeTypes: EdgeTypes = {
   dependency: DependencyEdge,
 };
 
+/** Set to true to draw red obstacle rectangles on the graph. */
+const DEBUG_SHOW_OBSTACLES = false;
+
 export default function GraphView({
   boardData,
   operationContextRef,
@@ -73,8 +77,12 @@ export default function GraphView({
 
 const SCROLL_ZOOM_SENSITIVITY = 0.01;
 const MIN_ZOOM = 0.3;
-const MAX_ZOOM = 2;
+const MAX_ZOOM = 100;
 const ZOOM_FACTOR = 1.25;
+const ZOOM_ANIMATION_DURATION_MS = 150;
+const FIT_VIEW_ANIMATION_DURATION_MS = 300;
+const BACKGROUND_GRID_GAP = 16;
+const BACKGROUND_DOT_SIZE = 1;
 
 function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }: GraphViewProps) {
   const [expandedParents, handleToggleExpand] = useExpandedParents(boardData);
@@ -112,15 +120,34 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(layoutNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);
 
+  // Tracks which layoutNodes identity has already been routed, so we only
+  // route edges once per layout change after ReactFlow measures nodes.
+  const routedLayoutRef = useRef<unknown>(null);
+
   useEffect(() => {
+    routedLayoutRef.current = null;
     setNodes(() => layoutNodes);
     setEdges(layoutEdges);
   }, [layoutNodes, layoutEdges, setNodes, setEdges]);
 
+  // Re-route edges once ReactFlow has measured node dimensions
+  useEffect(() => {
+    if (routedLayoutRef.current === layoutNodes) {
+      return;
+    }
+    const allMeasured = nodes.length > 0 && nodes.every((n) => n.measured?.width !== undefined);
+    if (!allMeasured) {
+      return;
+    }
+    routedLayoutRef.current = layoutNodes;
+    const { positions: nodePositions, parentMap } = buildNodePositions(nodes);
+    setEdges((prev) => assignLaneOffsets(prev, nodePositions, parentMap));
+  }, [nodes, layoutNodes, setEdges]);
+
   const handleDragSettled = useCallback(
     (finalNodes: Node[]) => {
-      const nodePositions = buildNodePositions(finalNodes);
-      setEdges((prev) => assignLaneOffsets(prev, nodePositions));
+      const { positions: nodePositions, parentMap } = buildNodePositions(finalNodes);
+      setEdges((prev) => assignLaneOffsets(prev, nodePositions, parentMap));
     },
     [setEdges],
   );
@@ -234,7 +261,7 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
       const scale = newZoom / zoom;
       void setViewport(
         { x: cx - (cx - x) * scale, y: cy - (cy - y) * scale, zoom: newZoom },
-        { duration: 150 },
+        { duration: ZOOM_ANIMATION_DURATION_MS },
       );
     },
     [getViewport, setViewport],
@@ -291,7 +318,12 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
         zoomOnScroll={false}
         panOnScroll={false}
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} />
+        <Background
+          variant={BackgroundVariant.Dots}
+          gap={BACKGROUND_GRID_GAP}
+          size={BACKGROUND_DOT_SIZE}
+        />
+        {DEBUG_SHOW_OBSTACLES && <DebugObstacles />}
         <Controls showZoom={false} showFitView={false} showInteractive={false}>
           <ControlButton onClick={handleZoomIn} title="Zoom in">
             {"+"}
@@ -301,7 +333,7 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
           </ControlButton>
           <ControlButton
             onClick={() => {
-              void fitView({ duration: 300 });
+              void fitView({ duration: FIT_VIEW_ANIMATION_DURATION_MS });
             }}
             title="Fit view"
           >

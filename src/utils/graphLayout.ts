@@ -4,7 +4,7 @@ import type { BoardData, Iteration, WorkItem } from "../types";
 import type { WorkItemNodeData } from "../components/WorkItemNode";
 import type { SprintDividerData } from "../components/SprintDivider";
 import type { ParentGroupData } from "../components/ParentGroup";
-import { computeActionableSet } from "./actionable";
+import { computeActionableSet, DONE_STATES } from "./actionable";
 import { mapBy } from "./collections";
 import { assignLaneOffsets } from "./edgeRouting";
 
@@ -21,6 +21,7 @@ export interface NodePosition {
   x: number;
   y: number;
   width: number;
+  height: number;
 }
 
 type AnyNodeData = WorkItemNodeData | SprintDividerData | ParentGroupData | DragGhostData;
@@ -971,14 +972,30 @@ function computeChildPlacements(
   multiSprintChildDepths: Map<number, number>,
   columnX: Map<string, number>,
   minSpanX: number,
+  expandedParents: Set<number>,
+  doneStates: Set<string>,
 ): ChildPlacement[] {
+  const depthWidths = new Map<number, number>();
+  for (const child of directChildren) {
+    const depth = multiSprintChildDepths.get(child.id) ?? 0;
+    const { width } = measureChildHeight(child, workItemMap, expandedParents, doneStates);
+    depthWidths.set(depth, Math.max(depthWidths.get(depth) ?? CHILD_WIDTH, width));
+  }
+
+  const depthOffsets = new Map<number, number>();
+  let accumulatedOffset = 0;
+  for (const depth of [...depthWidths.keys()].sort((a, b) => a - b)) {
+    depthOffsets.set(depth, accumulatedOffset);
+    accumulatedOffset += (depthWidths.get(depth) ?? CHILD_WIDTH) + NODE_GAP_X;
+  }
+
   const placements: ChildPlacement[] = [];
   for (const child of directChildren) {
     const placementPath = getPlacementPath(child, workItemMap, iterationByPath);
     const depth = multiSprintChildDepths.get(child.id) ?? 0;
     const externalX = columnX.get(placementPath);
     const baseSlotX = isNil(externalX) ? GROUP_PADDING : externalX - minSpanX + GROUP_PADDING;
-    const slotX = baseSlotX + depth * SUB_COLUMN_STRIDE;
+    const slotX = baseSlotX + (depthOffsets.get(depth) ?? depth * SUB_COLUMN_STRIDE);
     placements.push({ child, path: placementPath, depth, slotX });
   }
   placements.sort((a, b) => a.depth - b.depth);
@@ -1079,6 +1096,8 @@ function layoutExpandedMultiSprint(
     plan.multiSprintChildDepths,
     plan.columnX,
     span.minSpanX,
+    ctx.expandedParents,
+    ctx.doneStates,
   );
 
   let estimatedHeight = 0;
@@ -1356,16 +1375,23 @@ function buildDependencyEdges(
   nodeIdMap: NodeIdMap,
   edges: Edge[],
 ): void {
+  const seenEdges = new Set<string>();
   for (const workItem of workItems) {
     for (const succId of workItem.successors) {
       if (workItemMap.has(succId)) {
+        const edgeId = `edge-${workItem.id}-${succId}`;
+        if (seenEdges.has(edgeId)) {
+          continue;
+        }
+        seenEdges.add(edgeId);
         const sourceId = nodeIdMap.get(workItem.id) ?? `wi-${workItem.id}`;
         const targetId = nodeIdMap.get(succId) ?? `wi-${succId}`;
         edges.push({
-          id: `edge-${workItem.id}-${succId}`,
+          id: edgeId,
           source: sourceId,
           target: targetId,
           type: "dependency",
+          zIndex: 10,
           markerEnd: { type: MarkerType.ArrowClosed, color: "#000" },
         });
       }
@@ -1411,7 +1437,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   }
 
   const workItemMap = new Map(work_items.map((workItem) => [workItem.id, workItem]));
-  const doneStates = new Set(["Done", "Closed", "Resolved", "Removed"]);
+  const doneStates = DONE_STATES;
   const actionableSet = computeActionableSet(work_items);
   const ctx: RenderContext = {
     nodes,
@@ -1430,8 +1456,8 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   createSprintDividers(iterInfo, plan, columnCurrentY, nodes);
   buildDependencyEdges(work_items, workItemMap, nodeIdMap, edges);
 
-  const nodePositions = buildNodePositions(nodes);
-  const routedEdges = assignLaneOffsets(edges, nodePositions);
+  const { positions: nodePositions, parentMap } = buildNodePositions(nodes);
+  const routedEdges = assignLaneOffsets(edges, nodePositions, parentMap);
 
   return { nodes, edges: routedEdges };
 }
@@ -1442,28 +1468,34 @@ export function buildNodePositions(
     id: string;
     position: { x: number; y: number };
     parentId?: string;
-    style?: { width?: string | number };
-    measured?: { width?: number };
+    style?: { width?: string | number; height?: string | number };
+    measured?: { width?: number; height?: number };
   }[],
-): Map<string, NodePosition> {
+): { positions: Map<string, NodePosition>; parentMap: Map<string, string> } {
   const nodeById = new Map<string, (typeof nodes)[number]>();
   nodes.forEach((node) => nodeById.set(node.id, node));
 
   const positions = new Map<string, NodePosition>();
+  const parentMap = new Map<string, string>();
   nodes.forEach((node) => {
     let absX = node.position.x;
     let absY = node.position.y;
     if (node.parentId) {
-      const parent = nodeById.get(node.parentId);
-      if (parent) {
-        absX += parent.position.x;
-        absY += parent.position.y;
-      }
+      parentMap.set(node.id, node.parentId);
     }
-    const defaultWidth = node.parentId ? CHILD_WIDTH : SUB_COLUMN_WIDTH;
+    // Walk up the full ancestor chain to resolve absolute coordinates
+    let current = node.parentId ? nodeById.get(node.parentId) : undefined;
+    while (current) {
+      absX += current.position.x;
+      absY += current.position.y;
+      current = current.parentId ? nodeById.get(current.parentId) : undefined;
+    }
+    const defaultWidth = node.id.startsWith("wi-") ? CHILD_WIDTH : SUB_COLUMN_WIDTH;
     const width =
       node.measured?.width ?? (node.style?.width ? Number(node.style.width) : defaultWidth);
-    positions.set(node.id, { x: absX, y: absY, width });
+    const height =
+      node.measured?.height ?? (node.style?.height ? Number(node.style.height) : NODE_HEIGHT);
+    positions.set(node.id, { x: absX, y: absY, width, height });
   });
-  return positions;
+  return { positions, parentMap };
 }

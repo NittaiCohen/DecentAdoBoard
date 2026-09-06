@@ -2,24 +2,29 @@ import { describe, it, expect } from "vitest";
 import type { Edge } from "@xyflow/react";
 import type { Point } from "../types";
 import type { NodePosition } from "./graphLayout";
-import { SUB_COLUMN_WIDTH, SUB_COLUMN_STRIDE } from "./graphLayout";
+import { SUB_COLUMN_WIDTH } from "./graphLayout";
 import {
-  routeEdge,
   routeEdgeSimple,
-  routeLeftToRightEdge,
   routeRightToLeftEdge,
-  horizontalCrossesNode,
-  preOffsetSegments,
+  buildRoundedPath,
   assignLaneOffsets,
   OVERHEAD_LANE_Y,
 } from "./edgeRouting";
+import {
+  buildObstacles,
+  segmentBlockedByObstacles,
+  buildWaypointGraph,
+  orthogonalAStar,
+  shiftVerticalsLeft,
+  separateOverlappingSegments,
+  routeAllEdges,
+  OBSTACLE_PADDING,
+  TURN_PENALTY,
+} from "./pathfinding";
+import type { Obstacle, RouteResult } from "./pathfinding";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-/**
- * Extracts waypoints from a path string containing M, L, and Q commands.
- * For Q commands, extracts the end-point (skipping the control point).
- */
 function parsePath(path: string): Point[] {
   const points: Point[] = [];
   const re = /([MLQ])\s*([\d.e+-]+)\s+([\d.e+-]+)(?:\s+([\d.e+-]+)\s+([\d.e+-]+))?/g;
@@ -29,7 +34,6 @@ function parsePath(path: string): Point[] {
     if (cmd === "M" || cmd === "L") {
       points.push({ x: Number(match[2]), y: Number(match[3]) });
     } else if (cmd === "Q") {
-      // Q controlX controlY endX endY — we want the end point
       points.push({ x: Number(match[4]), y: Number(match[5]) });
     }
   }
@@ -40,88 +44,292 @@ function makeEdge(id: string, source: string, target: string): Edge {
   return { id, source, target, type: "dependency" };
 }
 
-function makeNodePosition(x: number, y: number, width = SUB_COLUMN_WIDTH): NodePosition {
-  return { x, y, width };
+function makeNodePosition(
+  x: number,
+  y: number,
+  width = SUB_COLUMN_WIDTH,
+  height = 80,
+): NodePosition {
+  return { x, y, width, height };
 }
 
-// ── routeEdge ────────────────────────────────────────────────────────────────
+// ── buildObstacles ───────────────────────────────────────────────────────────
 
-describe("routeEdge", () => {
-  it("returns empty string for degenerate (same position)", () => {
-    const p: Point = { x: 100, y: 200 };
-    expect(routeEdge(p, p, "elbow-destY")).toBe("");
+describe("buildObstacles", () => {
+  it("excludes source and target nodes", () => {
+    const nodePositions = new Map<string, NodePosition>([
+      ["wi-src", makeNodePosition(0, 100)],
+      ["wi-dst", makeNodePosition(400, 100)],
+      ["wi-blocker", makeNodePosition(200, 100)],
+    ]);
+    const obstacles = buildObstacles(nodePositions, new Set(["wi-src", "wi-dst"]));
+    expect(obstacles).toHaveLength(1);
+    expect(obstacles[0].id).toBe("wi-blocker");
   });
 
-  describe("forward (left-to-right)", () => {
-    it("elbow-destY produces correct path shape", () => {
-      const source: Point = { x: 280, y: 100 };
-      const destination: Point = { x: 620, y: 200 };
-      const path = routeEdge(source, destination, "elbow-destY", 0);
-      const points = parsePath(path);
-      // starts at source, ends at destination
-      expect(points[0]).toEqual(source);
-      expect(points[points.length - 1]).toEqual(destination);
-      // path should contain M and at least one Q (rounded corner)
-      expect(path).toContain("Q");
-    });
+  it("applies OBSTACLE_PADDING to all sides", () => {
+    const nodePositions = new Map<string, NodePosition>([
+      ["wi-n", makeNodePosition(100, 200, 280)],
+    ]);
+    const obstacles = buildObstacles(nodePositions, new Set());
+    expect(obstacles[0].left).toBe(100 - OBSTACLE_PADDING);
+    expect(obstacles[0].right).toBe(100 + 280 + OBSTACLE_PADDING);
+  });
+});
 
-    it("elbow-destY applies lane offset but still connects to destination", () => {
-      const source: Point = { x: 0, y: 100 };
-      const destination: Point = { x: 400, y: 300 };
-      const path = routeEdge(source, destination, "elbow-destY", 15);
-      const points = parsePath(path);
-      // Path should still end at the actual destination handle
-      expect(points[points.length - 1]).toEqual(destination);
-    });
+// ── segmentBlockedByObstacles ────────────────────────────────────────────────
 
-    it("elbow-srcY routes with correct shape", () => {
-      const source: Point = { x: 0, y: 100 };
-      const destination: Point = { x: 400, y: 300 };
-      const path = routeEdge(source, destination, "elbow-srcY", 0);
-      const points = parsePath(path);
-      // starts at source, ends at destination
-      expect(points[0]).toEqual(source);
-      expect(points[points.length - 1]).toEqual(destination);
-      expect(path).toContain("Q");
-    });
+describe("segmentBlockedByObstacles", () => {
+  const obstacles: Obstacle[] = [{ id: "obs", left: 100, top: 100, right: 300, bottom: 200 }];
 
-    it("staircase produces multiple segments", () => {
-      const source: Point = { x: 0, y: 100 };
-      const destination: Point = {
-        x: SUB_COLUMN_STRIDE * 2 + SUB_COLUMN_WIDTH,
-        y: 300,
-      };
-      const path = routeEdge(source, destination, "staircase", 0);
-      const points = parsePath(path);
-      // should have more than 4 waypoints for multi-step staircase
-      expect(points.length).toBeGreaterThan(4);
-      // starts at source and ends near destination
-      expect(points[0]).toEqual(source);
+  it("detects horizontal segment crossing obstacle", () => {
+    expect(segmentBlockedByObstacles({ x: 50, y: 150 }, { x: 350, y: 150 }, obstacles)).toBe(true);
+  });
+
+  it("allows horizontal segment above obstacle", () => {
+    expect(segmentBlockedByObstacles({ x: 50, y: 50 }, { x: 350, y: 50 }, obstacles)).toBe(false);
+  });
+
+  it("detects vertical segment crossing obstacle", () => {
+    expect(segmentBlockedByObstacles({ x: 200, y: 50 }, { x: 200, y: 250 }, obstacles)).toBe(true);
+  });
+
+  it("allows vertical segment left of obstacle", () => {
+    expect(segmentBlockedByObstacles({ x: 50, y: 50 }, { x: 50, y: 250 }, obstacles)).toBe(false);
+  });
+});
+
+// ── orthogonalAStar ──────────────────────────────────────────────────────────
+
+describe("orthogonalAStar", () => {
+  it("finds a direct path between source and target", () => {
+    const source: Point = { x: 0, y: 100 };
+    const target: Point = { x: 400, y: 100 };
+    const graph = buildWaypointGraph([], source, target, 600);
+    const result = orthogonalAStar(graph, 0, 1, TURN_PENALTY);
+    expect(result.path.length).toBeGreaterThanOrEqual(2);
+    expect(result.path[0]).toEqual(source);
+    expect(result.path[result.path.length - 1]).toEqual(target);
+    expect(result.turns).toBe(0);
+  });
+
+  it("routes around an obstacle with turns", () => {
+    const source: Point = { x: 0, y: 140 };
+    const target: Point = { x: 400, y: 140 };
+    const obstacles: Obstacle[] = [{ id: "obs", left: 150, top: 100, right: 250, bottom: 200 }];
+    const graph = buildWaypointGraph(obstacles, source, target, 600);
+    const result = orthogonalAStar(graph, 0, 1, TURN_PENALTY);
+    expect(result.path.length).toBeGreaterThan(2);
+    expect(result.turns).toBeGreaterThan(0);
+  });
+
+  it("returns empty path when no route exists", () => {
+    // Source and target with no visibility edges
+    const graph = {
+      waypoints: [
+        { x: 0, y: 0 },
+        { x: 100, y: 100 },
+      ],
+      edges: [],
+    };
+    const result = orthogonalAStar(graph, 0, 1, TURN_PENALTY);
+    expect(result.path).toHaveLength(0);
+  });
+});
+
+// ── shiftVerticalsLeft ───────────────────────────────────────────────────────
+
+describe("shiftVerticalsLeft", () => {
+  it("returns short paths unchanged", () => {
+    const path: Point[] = [
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+    ];
+    expect(shiftVerticalsLeft(path, [])).toEqual(path);
+  });
+
+  it("converts 3-point L-shape to Z-shape", () => {
+    const path: Point[] = [
+      { x: 0, y: 100 },
+      { x: 400, y: 100 },
+      { x: 400, y: 200 },
+    ];
+    const result = shiftVerticalsLeft(path, []);
+    // Should have 4 points (Z-shape)
+    expect(result.length).toBe(4);
+    // First point unchanged
+    expect(result[0]).toEqual({ x: 0, y: 100 });
+    // Last point unchanged
+    expect(result[result.length - 1]).toEqual({ x: 400, y: 200 });
+    // Vertical should be left of x=400
+    expect(result[1].x).toBeLessThan(400);
+    expect(result[2].x).toBe(result[1].x);
+  });
+
+  it("shifts terminal vertical left", () => {
+    const path: Point[] = [
+      { x: 0, y: 200 },
+      { x: 100, y: 200 },
+      { x: 100, y: 150 },
+      { x: 500, y: 150 },
+      { x: 500, y: 100 },
+    ];
+    const result = shiftVerticalsLeft(path, []);
+    // Terminal vertical at x=500 should be shifted left
+    const lastVerticalX = result[result.length - 2].x;
+    expect(lastVerticalX).toBeLessThan(500);
+  });
+});
+
+// ── separateOverlappingSegments ──────────────────────────────────────────────
+
+describe("separateOverlappingSegments", () => {
+  it("does nothing when no segments overlap", () => {
+    const routes: RouteResult[] = [
+      {
+        edge: makeEdge("e1", "a", "b"),
+        path: [
+          { x: 0, y: 100 },
+          { x: 100, y: 100 },
+          { x: 100, y: 200 },
+          { x: 200, y: 200 },
+        ],
+        sourceId: "a",
+        targetId: "b",
+      },
+      {
+        edge: makeEdge("e2", "c", "d"),
+        path: [
+          { x: 0, y: 300 },
+          { x: 100, y: 300 },
+          { x: 100, y: 400 },
+          { x: 200, y: 400 },
+        ],
+        sourceId: "c",
+        targetId: "d",
+      },
+    ];
+    const before = routes.map((r) => r.path.map((p) => ({ ...p })));
+    separateOverlappingSegments(routes);
+    // Paths should be unchanged
+    routes.forEach((r, i) => {
+      r.path.forEach((p, j) => {
+        expect(p.x).toBe(before[i][j].x);
+        expect(p.y).toBe(before[i][j].y);
+      });
     });
   });
 
-  describe("backward (right-to-left)", () => {
-    it("routes through the overhead lane", () => {
-      const source: Point = { x: 600, y: 100 };
-      const destination: Point = { x: 200, y: 300 };
-      const path = routeEdge(source, destination, "elbow-destY", 0);
-      const points = parsePath(path);
-      // starts at source, ends at destination
-      expect(points[0]).toEqual(source);
-      expect(points[points.length - 1]).toEqual(destination);
-      // path uses rounded corners
-      expect(path).toContain("Q");
-    });
+  it("allows overlap when edges share a source", () => {
+    const routes: RouteResult[] = [
+      {
+        edge: makeEdge("e1", "a", "b"),
+        path: [
+          { x: 0, y: 100 },
+          { x: 100, y: 100 },
+          { x: 100, y: 200 },
+          { x: 200, y: 200 },
+        ],
+        sourceId: "a",
+        targetId: "b",
+      },
+      {
+        edge: makeEdge("e2", "a", "c"),
+        path: [
+          { x: 0, y: 100 },
+          { x: 100, y: 100 },
+          { x: 100, y: 300 },
+          { x: 200, y: 300 },
+        ],
+        sourceId: "a",
+        targetId: "c",
+      },
+    ];
+    const before = routes.map((r) => r.path.map((p) => ({ ...p })));
+    separateOverlappingSegments(routes);
+    // First segments (shared source) should be unchanged
+    expect(routes[0].path[0]).toEqual(before[0][0]);
+    expect(routes[1].path[0]).toEqual(before[1][0]);
+  });
 
-    it("applies lane offset to overhead lane", () => {
-      const source: Point = { x: 600, y: 100 };
-      const destination: Point = { x: 200, y: 300 };
-      const path = routeEdge(source, destination, "elbow-destY", 10);
-      const points = parsePath(path);
-      // starts at source, ends at destination
-      expect(points[0]).toEqual(source);
-      expect(points[points.length - 1]).toEqual(destination);
-    });
+  it("separates overlapping interior segments from different edges", () => {
+    const routes: RouteResult[] = [
+      {
+        edge: makeEdge("e1", "a", "b"),
+        path: [
+          { x: 0, y: 100 },
+          { x: 200, y: 100 },
+          { x: 200, y: 300 },
+          { x: 400, y: 300 },
+        ],
+        sourceId: "a",
+        targetId: "b",
+      },
+      {
+        edge: makeEdge("e2", "c", "d"),
+        path: [
+          { x: 0, y: 200 },
+          { x: 200, y: 200 },
+          { x: 200, y: 400 },
+          { x: 400, y: 400 },
+        ],
+        sourceId: "c",
+        targetId: "d",
+      },
+    ];
+    separateOverlappingSegments(routes);
+    // Vertical segments at x=200 should now have different X values
+    expect(routes[0].path[1].x).not.toBe(routes[1].path[1].x);
+  });
+});
+
+// ── routeAllEdges ────────────────────────────────────────────────────────────
+
+describe("routeAllEdges", () => {
+  it("routes a simple edge with no obstacles", () => {
+    const nodePositions = new Map<string, NodePosition>([
+      ["src", makeNodePosition(0, 100)],
+      ["dst", makeNodePosition(400, 100)],
+    ]);
+    const edges: Edge[] = [makeEdge("e1", "src", "dst")];
+    const results = routeAllEdges(edges, nodePositions, 800);
+    expect(results).toHaveLength(1);
+    expect(results[0].path.length).toBeGreaterThanOrEqual(2);
+    // Path should end at target.x (with HANDLE_OFFSET finalized)
+    const lastPoint = results[0].path[results[0].path.length - 1];
+    expect(lastPoint.x).toBe(400);
+  });
+
+  it("returns empty path when node positions are missing", () => {
+    const edges: Edge[] = [makeEdge("e1", "unknown", "dst")];
+    const results = routeAllEdges(edges, new Map(), 800);
+    expect(results[0].path).toHaveLength(0);
+  });
+});
+
+// ── buildRoundedPath ─────────────────────────────────────────────────────────
+
+describe("buildRoundedPath", () => {
+  it("returns empty for fewer than 2 points", () => {
+    expect(buildRoundedPath([])).toBe("");
+    expect(buildRoundedPath([{ x: 0, y: 0 }])).toBe("");
+  });
+
+  it("returns straight line for 2 points", () => {
+    const result = buildRoundedPath([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+    ]);
+    expect(result).toBe("M 0 0 L 100 0");
+  });
+
+  it("uses Q commands for corners with 3+ points", () => {
+    const result = buildRoundedPath([
+      { x: 0, y: 0 },
+      { x: 100, y: 0 },
+      { x: 100, y: 100 },
+    ]);
+    expect(result).toContain("Q");
   });
 });
 
@@ -154,51 +362,7 @@ describe("routeEdgeSimple", () => {
   });
 });
 
-// ── routeLeftToRightEdge / routeRightToLeftEdge ──────────────────────────────
-
-describe("routeLeftToRightEdge", () => {
-  it("renders valid SVG path starting with M", () => {
-    const path = routeLeftToRightEdge({ x: 0, y: 0 }, { x: 400, y: 200 }, "elbow-destY", 0);
-    expect(path).toMatch(/^M /);
-  });
-
-  describe("no consecutive duplicate waypoints", () => {
-    const hasConsecutiveDuplicates = (pts: Point[]): boolean =>
-      pts.some((p, i) => i > 0 && p.x === pts[i - 1].x && p.y === pts[i - 1].y);
-
-    it("elbow-destY at same Y produces no duplicates", () => {
-      const path = routeLeftToRightEdge({ x: 0, y: 100 }, { x: 400, y: 100 }, "elbow-destY", 0);
-      expect(hasConsecutiveDuplicates(parsePath(path))).toBe(false);
-      expect(path).not.toContain("NaN");
-    });
-
-    it("elbow-srcY at same Y produces no duplicates", () => {
-      const path = routeLeftToRightEdge({ x: 0, y: 100 }, { x: 400, y: 100 }, "elbow-srcY", 0);
-      expect(hasConsecutiveDuplicates(parsePath(path))).toBe(false);
-      expect(path).not.toContain("NaN");
-    });
-
-    it("staircase at same Y produces no duplicates", () => {
-      const path = routeLeftToRightEdge({ x: 0, y: 100 }, { x: 400, y: 100 }, "staircase", 0);
-      expect(hasConsecutiveDuplicates(parsePath(path))).toBe(false);
-      expect(path).not.toContain("NaN");
-    });
-
-    it("elbow-destY at different Y still works", () => {
-      const path = routeLeftToRightEdge({ x: 0, y: 100 }, { x: 400, y: 300 }, "elbow-destY", 0);
-      expect(hasConsecutiveDuplicates(parsePath(path))).toBe(false);
-      expect(path).not.toContain("NaN");
-    });
-
-    it("path reaches the destination point", () => {
-      const path = routeLeftToRightEdge({ x: 0, y: 100 }, { x: 400, y: 100 }, "elbow-destY", 0);
-      const points = parsePath(path);
-      const last = points[points.length - 1];
-      expect(last.x).toBe(400);
-      expect(last.y).toBe(100);
-    });
-  });
-});
+// ── routeRightToLeftEdge ─────────────────────────────────────────────────────
 
 describe("routeRightToLeftEdge", () => {
   it("renders valid SVG path with overhead routing", () => {
@@ -208,128 +372,29 @@ describe("routeRightToLeftEdge", () => {
   });
 });
 
-// ── horizontalCrossesNode ────────────────────────────────────────────────────
-
-describe("horizontalCrossesNode", () => {
-  const nodePositions = new Map<string, NodePosition>([
-    ["src", makeNodePosition(0, 100)],
-    ["dst", makeNodePosition(600, 100)],
-    ["blocker", makeNodePosition(300, 90)],
-  ]);
-
-  it("returns true when horizontal line crosses a node body", () => {
-    // blocker at y=90, height=80 → spans y=90..170
-    // horizontal at y=130 crosses it, and x range overlaps
-    expect(horizontalCrossesNode(130, 100, 500, "src", "dst", nodePositions)).toBe(true);
-  });
-
-  it("returns false when line is above the node", () => {
-    // y=50 is above blocker at y=90
-    expect(horizontalCrossesNode(50, 100, 500, "src", "dst", nodePositions)).toBe(false);
-  });
-
-  it("returns false when line is below the node", () => {
-    // y=200 is below blocker (90 + 80 = 170)
-    expect(horizontalCrossesNode(200, 100, 500, "src", "dst", nodePositions)).toBe(false);
-  });
-
-  it("excludes source and destination nodes", () => {
-    // Line crosses src node position, but src is excluded
-    expect(horizontalCrossesNode(140, 0, 600, "src", "dst", nodePositions)).toBe(true); // blocker still hit
-    // Remove blocker, only src and dst remain
-    const noBlockers = new Map<string, NodePosition>([
-      ["src", makeNodePosition(0, 100)],
-      ["dst", makeNodePosition(600, 100)],
-    ]);
-    expect(horizontalCrossesNode(140, 0, 700, "src", "dst", noBlockers)).toBe(false);
-  });
-
-  it("returns false when x range does not overlap node", () => {
-    // blocker at x=300..580, but we check x=0..100
-    expect(horizontalCrossesNode(130, 0, 100, "src", "dst", nodePositions)).toBe(false);
-  });
-});
-
-// ── preOffsetSegments ────────────────────────────────────────────────────────
-
-describe("preOffsetSegments", () => {
-  it("returns empty segments when source node is missing", () => {
-    const edge = makeEdge("e1", "unknown", "dst");
-    const nodePositions = new Map<string, NodePosition>([["dst", makeNodePosition(400, 100)]]);
-    const result = preOffsetSegments(edge, nodePositions);
-    expect(result.segments).toHaveLength(0);
-    expect(result.strategy).toBe("elbow-destY");
-  });
-
-  it("chooses elbow-destY when path is clear", () => {
-    const nodePositions = new Map<string, NodePosition>([
-      ["src", makeNodePosition(0, 100)],
-      ["dst", makeNodePosition(400, 200)],
-    ]);
-    const edge = makeEdge("e1", "src", "dst");
-    const result = preOffsetSegments(edge, nodePositions);
-    expect(result.strategy).toBe("elbow-destY");
-    expect(result.segments).toHaveLength(3);
-  });
-
-  it("falls back to elbow-srcY when destY path is blocked", () => {
-    // blocker positioned to intersect the destY horizontal at y=240 (destination node center)
-    const nodePositions = new Map<string, NodePosition>([
-      ["src", makeNodePosition(0, 100)],
-      ["dst", makeNodePosition(600, 200)],
-      ["blocker", makeNodePosition(200, 200)],
-    ]);
-    const edge = makeEdge("e1", "src", "dst");
-    const result = preOffsetSegments(edge, nodePositions);
-    expect(result.strategy).toBe("elbow-srcY");
-  });
-
-  it("falls back to staircase when both elbows are blocked", () => {
-    // Place blockers to block both horizontal paths
-    const srcY = 100;
-    const dstY = 300;
-    const nodePositions = new Map<string, NodePosition>([
-      ["src", makeNodePosition(0, srcY)],
-      ["dst", makeNodePosition(600, dstY)],
-      // Blocks destY horizontal: node body spans dstY center
-      ["blocker1", makeNodePosition(200, dstY)],
-      // Blocks srcY horizontal: node body spans srcY center
-      ["blocker2", makeNodePosition(200, srcY)],
-    ]);
-    const edge = makeEdge("e1", "src", "dst");
-    const result = preOffsetSegments(edge, nodePositions);
-    expect(result.strategy).toBe("staircase");
-    // staircase produces at least 3 segments
-    expect(result.segments.length).toBeGreaterThanOrEqual(3);
-  });
-});
-
 // ── assignLaneOffsets ────────────────────────────────────────────────────────
 
 describe("assignLaneOffsets", () => {
-  it("assigns routingStrategy and laneOffset to each edge", () => {
+  it("assigns path data to each forward edge", () => {
     const nodePositions = new Map<string, NodePosition>([
       ["a", makeNodePosition(0, 100)],
       ["b", makeNodePosition(400, 100)],
-      ["c", makeNodePosition(400, 300)],
     ]);
-    const edges: Edge[] = [makeEdge("e1", "a", "b"), makeEdge("e2", "a", "c")];
+    const edges: Edge[] = [makeEdge("e1", "a", "b")];
     const result = assignLaneOffsets(edges, nodePositions);
-    expect(result).toHaveLength(2);
-    for (const edge of result) {
-      expect(edge.data).toHaveProperty("routingStrategy");
-      expect(edge.data).toHaveProperty("laneOffset");
-      expect(typeof edge.data?.laneOffset).toBe("number");
-    }
+    expect(result).toHaveLength(1);
+    expect(result[0].data).toHaveProperty("path");
+    expect(typeof result[0].data?.path).toBe("string");
+    expect(result[0].data?.path).toContain("M");
   });
 
-  it("returns edges unchanged when node positions are missing", () => {
+  it("returns edges with empty path when node positions are missing", () => {
     const edges: Edge[] = [makeEdge("e1", "a", "b")];
     const result = assignLaneOffsets(edges, new Map());
     expect(result).toHaveLength(1);
   });
 
-  it("separates backward edges into their own lane group", () => {
+  it("assigns laneOffset to backward edges", () => {
     const nodePositions = new Map<string, NodePosition>([
       ["a", makeNodePosition(400, 100)],
       ["b", makeNodePosition(0, 100)],
@@ -338,33 +403,7 @@ describe("assignLaneOffsets", () => {
     const result = assignLaneOffsets(edges, nodePositions);
     expect(result).toHaveLength(1);
     expect(result[0].data).toHaveProperty("laneOffset");
-  });
-
-  it("assigns distinct lane offsets to overlapping forward edges", () => {
-    // Two edges targeting the same Y → they should overlap and get different offsets
-    const nodePositions = new Map<string, NodePosition>([
-      ["a", makeNodePosition(0, 100)],
-      ["b", makeNodePosition(0, 200)],
-      ["c", makeNodePosition(400, 150)],
-    ]);
-    const edges: Edge[] = [makeEdge("e1", "a", "c"), makeEdge("e2", "b", "c")];
-    const result = assignLaneOffsets(edges, nodePositions);
-    expect(result).toHaveLength(2);
-    const offsets = result.map((e) => Number(e.data?.laneOffset));
-    // If they're in the same lane group, offsets should differ
-    if (offsets[0] !== offsets[1]) {
-      expect(offsets[0]).not.toBe(offsets[1]);
-    }
-  });
-
-  it("single edge gets zero lane offset", () => {
-    const nodePositions = new Map<string, NodePosition>([
-      ["a", makeNodePosition(0, 100)],
-      ["b", makeNodePosition(400, 200)],
-    ]);
-    const edges: Edge[] = [makeEdge("e1", "a", "b")];
-    const result = assignLaneOffsets(edges, nodePositions);
-    expect(result[0].data?.laneOffset).toBe(0);
+    expect(result[0].data).toHaveProperty("path");
   });
 
   it("handles empty edge array", () => {

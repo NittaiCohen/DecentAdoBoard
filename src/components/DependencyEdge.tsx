@@ -1,8 +1,7 @@
-import { BaseEdge, useNodes } from "@xyflow/react";
 import type { Edge, EdgeProps } from "@xyflow/react";
-import type { Point } from "../types";
-import { routeEdge, routeEdgeSimple } from "../utils/edgeRouting";
+import { BaseEdge, useNodes } from "@xyflow/react";
 import type { DependencyEdgeData } from "../utils/edgeRouting";
+import { routeEdgeSimple } from "../utils/edgeRouting";
 
 type DependencyEdge = Edge<DependencyEdgeData, "dependency">;
 
@@ -31,17 +30,9 @@ function DependencyEdge({
     return null;
   }
 
-  const sourcePoint: Point = { x: sourceX, y: sourceY };
-  const destinationPoint: Point = { x: targetX, y: targetY };
-
   const path = isDraggingSourceOrTarget
-    ? routeEdgeSimple(sourcePoint, destinationPoint)
-    : routeEdge(
-        sourcePoint,
-        destinationPoint,
-        data?.routingStrategy ?? "elbow-destY",
-        data?.laneOffset ?? 0,
-      );
+    ? routeEdgeSimple({ x: sourceX, y: sourceY }, { x: targetX, y: targetY })
+    : (data?.path ?? "");
 
   const stroke = selected ? "#2563eb" : "#000";
   const strokeWidth = selected ? EDGE_SELECTED_STROKE_WIDTH : EDGE_STROKE_WIDTH;
