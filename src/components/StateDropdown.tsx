@@ -12,6 +12,7 @@ import { applyOperation } from "../utils/reversibleOperations";
 
 const MENU_GAP_PX = 4;
 const FIVE_MINUTES_MS = 300_000;
+const DROPDOWN_Z_INDEX = 9999;
 
 interface StateDropdownProps {
   workItemId: number;
@@ -145,7 +146,7 @@ export default function StateDropdown({
           <div
             ref={menuRef}
             className="fixed min-w-[140px] bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg shadow-lg py-1"
-            style={{ top: menuPos.top, left: menuPos.left, zIndex: 9999 }}
+            style={{ top: menuPos.top, left: menuPos.left, zIndex: DROPDOWN_Z_INDEX }}
           >
             {isLoading && (
               <div className="px-3 py-2 text-xs text-gray-500 dark:text-gray-400">

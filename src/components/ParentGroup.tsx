@@ -35,6 +35,9 @@ const DEFAULT_COLORS =
 /** Minimum header width that must remain visible when offset is applied. */
 const MIN_VISIBLE_HEADER_WIDTH = 200;
 
+/** Duration (seconds) for the header slide animation. */
+const HEADER_SLIDE_DURATION_S = 0.15;
+
 /** Selects viewport transform from the React Flow store. */
 const viewportSelector = (s: { transform: [number, number, number] }) => s.transform;
 
@@ -73,7 +76,7 @@ function ParentGroupComponent({ data, positionAbsoluteX }: NodeProps<ParentGroup
           position: "relative",
           left: headerOffset,
           width: data.width - headerOffset,
-          transition: "left 0.15s ease-out, width 0.15s ease-out",
+          transition: `left ${HEADER_SLIDE_DURATION_S}s ease-out, width ${HEADER_SLIDE_DURATION_S}s ease-out`,
         }}
       >
         <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">{`#${data.workItemId}`}</span>

@@ -1,6 +1,6 @@
 import type { WorkItem } from "../types";
 
-const DONE_STATES = new Set(["Done", "Closed", "Resolved", "Removed"]);
+export const DONE_STATES = new Set(["Done", "Closed", "Resolved", "Removed"]);
 
 /**
  * Computes the set of actionable work item IDs.
@@ -56,5 +56,3 @@ export function computeActionableSet(workItems: WorkItem[]): Set<number> {
     workItems.filter((workItem) => isActionable(workItem.id)).map((workItem) => workItem.id),
   );
 }
-
-export { DONE_STATES };
