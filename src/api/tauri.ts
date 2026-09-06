@@ -1,5 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { AccountInfo, BoardData, ProjectInfo, TeamInfo, WorkItemTypeState } from "../types";
+import type {
+  AccountInfo,
+  BoardData,
+  IdentitySearchResult,
+  ProjectInfo,
+  TeamInfo,
+  WorkItemFieldUpdate,
+  WorkItemOverview,
+  WorkItemTypeState,
+} from "../types";
 
 /** Send the selected organization, project, and area path to the Rust backend. */
 export async function setConfig(
@@ -60,6 +69,11 @@ export async function getBoardData(): Promise<BoardData> {
   return await invoke<BoardData>("get_board_data");
 }
 
+/** Fetch the complete field data and field metadata for a work item. */
+export async function getWorkItemOverview(workItemId: number): Promise<WorkItemOverview> {
+  return await invoke<WorkItemOverview>("get_work_item_overview", { workItemId });
+}
+
 /** Update a work item's state in ADO. */
 export async function updateWorkItemState(workItemId: number, newState: string): Promise<void> {
   await invoke("update_work_item_state", { workItemId, newState });
@@ -73,9 +87,22 @@ export async function updateWorkItemIteration(
   await invoke("update_work_item_iteration", { workItemId, newIterationPath });
 }
 
+/** Update one or more editable Azure DevOps fields. */
+export async function updateWorkItemFields(
+  workItemId: number,
+  updates: WorkItemFieldUpdate[],
+): Promise<void> {
+  await invoke("update_work_item_fields", { workItemId, updates });
+}
+
 /** Fetch valid states for a work item type from ADO. */
 export async function getWorkItemTypeStates(workItemType: string): Promise<WorkItemTypeState[]> {
   return await invoke<WorkItemTypeState[]>("get_work_item_type_states", { workItemType });
+}
+
+/** Search Azure DevOps identities for assigning a work item. */
+export async function searchIdentities(searchText: string): Promise<IdentitySearchResult[]> {
+  return await invoke<IdentitySearchResult[]>("search_identities", { searchText });
 }
 
 /** Write debug data to a JSON file in the app data directory. Returns the file path written. */

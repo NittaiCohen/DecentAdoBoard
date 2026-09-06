@@ -1,5 +1,6 @@
 use crate::models::*;
 use crate::state::AppState;
+use base64::Engine;
 
 const WORK_ITEM_BATCH_SIZE: usize = 200;
 const SPRINT_WINDOW: usize = 3; // sprints before and after current
@@ -252,6 +253,231 @@ pub async fn fetch_work_items(state: &AppState) -> Result<Vec<WorkItem>, String>
 
     let known_ids: std::collections::HashSet<i64> = all_ids.iter().cloned().collect();
     Ok(convert_ado_work_items(all_work_items, &known_ids))
+}
+
+pub async fn fetch_work_item_overview(
+    state: &AppState,
+    work_item_id: i64,
+) -> Result<WorkItemOverview, String> {
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+    let item_url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workitems/{}?$expand=all&api-version=7.1",
+        config.organization, config.project, work_item_id
+    );
+
+    let response = state
+        .http_client
+        .get(&item_url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("Work item overview request failed: {e}"))?;
+    let response = check_response(response, "Work item overview").await?;
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Work item overview parse error: {e}"))?;
+
+    let fields = body["fields"]
+        .as_object()
+        .cloned()
+        .ok_or_else(|| "Work item overview has no fields".to_string())?;
+    let work_item_type = fields["System.WorkItemType"]
+        .as_str()
+        .ok_or_else(|| "Work item overview has no work item type".to_string())?
+        .to_string();
+
+    let encoded_work_item_type = urlencoding::encode(&work_item_type);
+    let definition_url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workitemtypes/{}/fields?$expand=All&api-version=7.1",
+        config.organization, config.project, encoded_work_item_type
+    );
+    let definition_response = state
+        .http_client
+        .get(&definition_url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("Work item field metadata request failed: {e}"))?;
+    let definition_response =
+        check_response(definition_response, "Work item field metadata").await?;
+    let definition: AdoWorkItemTypeFieldsResponse = definition_response
+        .json()
+        .await
+        .map_err(|e| format!("Work item field metadata parse error: {e}"))?;
+
+    let fields_url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/fields?api-version=7.1",
+        config.organization, config.project
+    );
+    let fields_response = state
+        .http_client
+        .get(&fields_url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("Work item fields metadata request failed: {e}"))?;
+    let fields_response = check_response(fields_response, "Work item fields metadata").await?;
+    let fields_metadata: AdoWorkItemTypeFieldsResponse = fields_response
+        .json()
+        .await
+        .map_err(|e| format!("Work item fields metadata parse error: {e}"))?;
+    let field_types: std::collections::HashMap<_, _> = fields_metadata
+        .value
+        .into_iter()
+        .map(|field| (field.reference_name, (field.field_type, field.read_only)))
+        .collect();
+    let field_definitions = definition
+        .value
+        .into_iter()
+        .map(|mut field| {
+            if let Some((field_type, read_only)) = field_types.get(&field.reference_name) {
+                field.field_type.clone_from(field_type);
+                field.read_only = *read_only;
+            }
+            field
+        })
+        .collect();
+
+    Ok(WorkItemOverview {
+        id: work_item_id,
+        work_item_type,
+        fields: fields.into_iter().collect(),
+        field_definitions,
+    })
+}
+
+pub async fn search_identities(
+    state: &AppState,
+    search_text: &str,
+) -> Result<Vec<IdentitySearchResult>, String> {
+    let trimmed_search_text = search_text.trim();
+    if trimmed_search_text.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/_apis/IdentityPicker/Identities?api-version=5.0-preview.1",
+        config.organization
+    );
+    let request_body = serde_json::json!({
+        "query": trimmed_search_text,
+        "identityTypes": ["user", "servicePrincipal"],
+        "operationScopes": ["ims", "source"],
+        "options": {
+            "MinResults": 5,
+            "MaxResults": 40
+        },
+        "properties": [
+            "DisplayName",
+            "Mail",
+            "SignInAddress",
+            "SamAccountName",
+            "Active",
+            "SubjectDescriptor"
+        ]
+    });
+
+    let response = state
+        .http_client
+        .post(&url)
+        .header("Authorization", &auth)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|e| format!("Identity picker request failed: {e}"))?;
+    let response = check_response(response, "Identity search").await?;
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Identity picker parse error: {e}"))?;
+
+    let results = body["results"]
+        .as_array()
+        .ok_or_else(|| "Identity picker response has no results array".to_string())?;
+
+    let mut identities = Vec::new();
+    for result in results {
+        let Some(result_identities) = result["identities"].as_array() else {
+            continue;
+        };
+
+        for identity in result_identities {
+            let identity = identity.clone();
+            let Some(display_name) = identity["displayName"].as_str() else {
+                continue;
+            };
+            let display_name = display_name.to_string();
+            let unique_name = identity["signInAddress"]
+                .as_str()
+                .or_else(|| identity["samAccountName"].as_str())
+                .or_else(|| identity["mail"].as_str())
+                .unwrap_or(&display_name)
+                .to_string();
+
+            let avatar_data_url = match identity["subjectDescriptor"].as_str() {
+                Some(subject_descriptor) => fetch_identity_avatar(
+                    &state.http_client,
+                    &auth,
+                    &config.organization,
+                    subject_descriptor,
+                )
+                .await
+                .ok(),
+                None => None,
+            };
+
+            identities.push(IdentitySearchResult {
+                display_name,
+                unique_name,
+                avatar_data_url,
+            });
+        }
+    }
+
+    Ok(identities)
+}
+
+async fn fetch_identity_avatar(
+    http_client: &reqwest::Client,
+    auth: &str,
+    organization: &str,
+    subject_descriptor: &str,
+) -> Result<String, String> {
+    let encoded_descriptor = urlencoding::encode(subject_descriptor);
+    let url = format!(
+        "https://vssps.dev.azure.com/{organization}/_apis/graph/Subjects/{encoded_descriptor}/avatars?size=small&format=png&api-version=7.1"
+    );
+    let response = http_client
+        .get(url)
+        .header("Authorization", auth)
+        .send()
+        .await
+        .map_err(|e| format!("Identity avatar request failed: {e}"))?;
+    let response = check_response(response, "Identity avatar").await?;
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Identity avatar parse error: {e}"))?;
+    let bytes = body["value"]
+        .as_array()
+        .ok_or_else(|| "Identity avatar response has no value array".to_string())?
+        .iter()
+        .map(|byte| {
+            byte.as_u64()
+                .and_then(|value| u8::try_from(value).ok())
+                .ok_or_else(|| "Identity avatar contains an invalid byte".to_string())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(format!(
+        "data:image/png;base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    ))
 }
 
 /// Convert ADO work items to frontend types, resolving relations.

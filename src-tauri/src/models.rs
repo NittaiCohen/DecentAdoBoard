@@ -47,6 +47,16 @@ pub struct AdoIdentityRef {
     pub display_name: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdentitySearchResult {
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+    #[serde(rename = "uniqueName")]
+    pub unique_name: String,
+    #[serde(rename = "avatarDataUrl")]
+    pub avatar_data_url: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AdoRelation {
     pub rel: String,
@@ -119,6 +129,47 @@ pub struct AdoWorkItemTypeState {
     pub name: String,
     pub color: String,
     pub category: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AdoWorkItemTypeFieldsResponse {
+    pub value: Vec<AdoWorkItemFieldDefinition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdoWorkItemFieldDefinition {
+    #[serde(rename = "referenceName")]
+    pub reference_name: String,
+    pub name: String,
+    #[serde(rename = "fieldType", alias = "type", default = "default_field_type")]
+    pub field_type: String,
+    #[serde(rename = "readOnly", default)]
+    pub read_only: bool,
+    #[serde(rename = "alwaysRequired", default)]
+    pub always_required: bool,
+    #[serde(rename = "allowedValues", default)]
+    pub allowed_values: Vec<serde_json::Value>,
+}
+
+fn default_field_type() -> String {
+    "string".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkItemOverview {
+    pub id: i64,
+    #[serde(rename = "workItemType")]
+    pub work_item_type: String,
+    pub fields: std::collections::HashMap<String, serde_json::Value>,
+    #[serde(rename = "fieldDefinitions")]
+    pub field_definitions: Vec<AdoWorkItemFieldDefinition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkItemFieldUpdate {
+    #[serde(rename = "referenceName")]
+    pub reference_name: String,
+    pub value: serde_json::Value,
 }
 
 // --- ADO work item PATCH body types ---
@@ -292,7 +343,27 @@ mod tests {
         );
     }
 
+    #[test]
+    fn work_item_type_fields_response_deserializes_value_array() {
+        let response: AdoWorkItemTypeFieldsResponse = serde_json::from_value(json!({
+            "count": 1,
+            "value": [{
+                "referenceName": "System.Title",
+                "name": "Title",
+                "alwaysRequired": true,
+                "allowedValues": []
+            }]
+        }))
+        .unwrap();
 
+        assert_eq!(response.value.len(), 1);
+        assert_eq!(response.value[0].reference_name, "System.Title");
+        assert_eq!(response.value[0].field_type, "string");
+
+        let serialized = serde_json::to_value(&response.value[0]).unwrap();
+        assert_eq!(serialized["fieldType"], "string");
+        assert!(serialized.get("field_type").is_none());
+    }
 
     #[test]
     fn account_project_and_team_info_deserialize() {

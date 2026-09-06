@@ -37,6 +37,22 @@ pub async fn get_board_data(state: State<'_, AppState>) -> Result<BoardData, Str
     })
 }
 
+#[tauri::command]
+pub async fn get_work_item_overview(
+    state: State<'_, AppState>,
+    work_item_id: i64,
+) -> Result<WorkItemOverview, String> {
+    ado_client::fetch_work_item_overview(&state, work_item_id).await
+}
+
+#[tauri::command]
+pub async fn search_identities(
+    state: State<'_, AppState>,
+    search_text: String,
+) -> Result<Vec<IdentitySearchResult>, String> {
+    ado_client::search_identities(&state, &search_text).await
+}
+
 fn parse_and_sort_accounts(resp_text: &str) -> Result<Vec<AccountInfo>, String> {
     let mut accounts = if let Ok(wrapped) = serde_json::from_str::<AccountsResponse>(resp_text) {
         wrapped.value.unwrap_or_default()

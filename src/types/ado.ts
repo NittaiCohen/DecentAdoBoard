@@ -60,3 +60,38 @@ export interface WorkItemTypeState {
   color: string;
   category: string;
 }
+
+export interface IdentitySearchResult {
+  displayName: string;
+  uniqueName: string;
+  avatarDataUrl: string | null;
+}
+
+export type JsonValue =
+  | null
+  | boolean
+  | number
+  | string
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+export interface WorkItemFieldDefinition {
+  referenceName: string;
+  name: string;
+  fieldType: string;
+  readOnly: boolean;
+  alwaysRequired: boolean;
+  allowedValues: JsonValue[];
+}
+
+export interface WorkItemOverview {
+  id: number;
+  workItemType: string;
+  fields: Record<string, JsonValue>;
+  fieldDefinitions: WorkItemFieldDefinition[];
+}
+
+export interface WorkItemFieldUpdate {
+  referenceName: string;
+  value: JsonValue;
+}

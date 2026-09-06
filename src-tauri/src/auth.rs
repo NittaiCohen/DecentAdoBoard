@@ -7,8 +7,14 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub const CLIENT_ID: &str = "ce5adad2-f8f2-4a19-b494-422225cf1d25";
 const TENANT_ID: &str = "72f988bf-86f1-41af-91ab-2d7cd011db47";
-const AUTH_URL: &str = formatcp!("https://login.microsoftonline.com/{}/oauth2/v2.0/authorize", TENANT_ID);
-const TOKEN_URL: &str = formatcp!("https://login.microsoftonline.com/{}/oauth2/v2.0/token", TENANT_ID);
+const AUTH_URL: &str = formatcp!(
+    "https://login.microsoftonline.com/{}/oauth2/v2.0/authorize",
+    TENANT_ID
+);
+const TOKEN_URL: &str = formatcp!(
+    "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
+    TENANT_ID
+);
 const ADO_SCOPE: &str = "499b84ac-1321-427f-aa17-267ca6975798/user_impersonation offline_access";
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
 
@@ -44,7 +50,14 @@ pub async fn get_az_cli_token() -> Result<OAuthTokens, String> {
     // On Windows, az is a .cmd file and must be invoked via cmd.exe.
     #[cfg(windows)]
     let output = tokio::process::Command::new("cmd")
-        .args(["/c", "az", "account", "get-access-token", "--resource", ADO_RESOURCE_ID])
+        .args([
+            "/c",
+            "az",
+            "account",
+            "get-access-token",
+            "--resource",
+            ADO_RESOURCE_ID,
+        ])
         .output()
         .await;
     #[cfg(not(windows))]
@@ -59,9 +72,7 @@ pub async fn get_az_cli_token() -> Result<OAuthTokens, String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "az CLI error (run 'az login' first): {stderr}"
-        ));
+        return Err(format!("az CLI error (run 'az login' first): {stderr}"));
     }
 
     let json: serde_json::Value = serde_json::from_slice(&output.stdout)
@@ -181,7 +192,11 @@ fn parse_query_string(query: &str) -> HashMap<String, String> {
             let mut kv = param.splitn(2, '=');
             let key = kv.next()?;
             let value = kv.next().unwrap_or_default();
-            let decode = |s| urlencoding::decode(s).map(|c| c.into_owned()).unwrap_or_else(|_| s.to_owned());
+            let decode = |s| {
+                urlencoding::decode(s)
+                    .map(|c| c.into_owned())
+                    .unwrap_or_else(|_| s.to_owned())
+            };
             Some((decode(key), decode(value)))
         })
         .collect()
@@ -268,11 +283,10 @@ fn success_response() -> String {
 }
 
 fn error_response(message: &str) -> String {
-    let body = include_str!("auth_error.html")
-        .replace("{message}", &html_escape::encode_text(message));
+    let body =
+        include_str!("auth_error.html").replace("{message}", &html_escape::encode_text(message));
     http_response(400, "Bad Request", &body)
 }
-
 
 #[cfg(test)]
 mod tests {
