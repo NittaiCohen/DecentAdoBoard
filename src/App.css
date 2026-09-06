@@ -2,6 +2,14 @@
 
 @custom-variant dark (&:where(.dark, .dark *));
 
+.react-flow__edges {
+  z-index: 1;
+}
+
+.react-flow__nodes {
+  z-index: 0;
+}
+
 .react-flow__controls button {
   background-color: #f3f4f6;
   color: #374151;
