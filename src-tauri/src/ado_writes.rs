@@ -36,6 +36,37 @@ async fn fetch_current_state(state: &AppState, work_item_id: i64) -> Result<Stri
         .ok_or_else(|| "Work item has no System.State field".to_string())
 }
 
+/// Fetch the current iteration path of a work item from ADO.
+async fn fetch_current_iteration(state: &AppState, work_item_id: i64) -> Result<String, String> {
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workitems/{}?$select=System.IterationPath&api-version=7.1",
+        config.organization, config.project, work_item_id
+    );
+
+    let resp = state
+        .http_client
+        .get(&url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to fetch work item iteration: {e}"))?;
+
+    let resp = check_response(resp, "Fetch work item iteration").await?;
+
+    let body: serde_json::Value = resp
+        .json()
+        .await
+        .map_err(|e| format!("Failed to parse work item response: {e}"))?;
+
+    body["fields"]["System.IterationPath"]
+        .as_str()
+        .map(|path| path.to_string())
+        .ok_or_else(|| "Work item has no System.IterationPath field".to_string())
+}
+
 /// Update a work item's state via the ADO PATCH API and log to the audit log.
 async fn update_state_impl(
     state: &AppState,
@@ -76,6 +107,50 @@ async fn update_state_impl(
         AuditAction::UpdateState {
             old: old_state,
             new: new_state.to_string(),
+        },
+        work_item_id,
+    )?;
+
+    Ok(())
+}
+
+/// Update a work item's iteration path via the ADO PATCH API and log the change.
+async fn update_iteration_impl(
+    state: &AppState,
+    work_item_id: i64,
+    new_iteration_path: &str,
+) -> Result<(), String> {
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+    let old_iteration_path = fetch_current_iteration(state, work_item_id).await?;
+
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workitems/{}?api-version=7.1",
+        config.organization, config.project, work_item_id
+    );
+
+    let patch_body = vec![JsonPatchOperation {
+        op: "replace".to_string(),
+        path: "/fields/System.IterationPath".to_string(),
+        value: serde_json::Value::String(new_iteration_path.to_string()),
+    }];
+
+    let resp = state
+        .http_client
+        .patch(&url)
+        .header("Authorization", &auth)
+        .header("Content-Type", "application/json-patch+json")
+        .json(&patch_body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to update work item iteration: {e}"))?;
+
+    check_response(resp, "Update work item iteration").await?;
+
+    state.audit_log.log(
+        AuditAction::UpdateIteration {
+            old: old_iteration_path,
+            new: new_iteration_path.to_string(),
         },
         work_item_id,
     )?;
@@ -130,6 +205,15 @@ pub async fn update_work_item_state(
     new_state: String,
 ) -> Result<(), String> {
     update_state_impl(&state, work_item_id, &new_state).await
+}
+
+#[tauri::command]
+pub async fn update_work_item_iteration(
+    state: State<'_, AppState>,
+    work_item_id: i64,
+    new_iteration_path: String,
+) -> Result<(), String> {
+    update_iteration_impl(&state, work_item_id, &new_iteration_path).await
 }
 
 #[tauri::command]

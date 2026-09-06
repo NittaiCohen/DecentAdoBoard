@@ -153,6 +153,25 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
     [setEdges],
   );
 
+  const handleSprintChange = useCallback(
+    (workItemId: number, iterationPath: string) => {
+      const workItem = wiMap.get(workItemId);
+      const ctx = operationContextRef.current;
+      if (!workItem || !ctx || workItem.iteration_path === iterationPath) {
+        return;
+      }
+
+      const op: ReversibleOperation = {
+        type: "changeWorkItemIteration",
+        workItemId,
+        fromIterationPath: workItem.iteration_path,
+        toIterationPath: iterationPath,
+      };
+      applyOperation(op, ctx);
+    },
+    [wiMap, operationContextRef],
+  );
+
   useEffect(() => {
     operationContextRef.current = { queryClient, setNodes, onDragSettled: handleDragSettled };
   });
@@ -217,6 +236,7 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
     wiMap,
     handleDragSettled,
     pushUndo,
+    handleSprintChange,
   );
 
   const containerRef = useRef<HTMLDivElement>(null);

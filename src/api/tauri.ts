@@ -65,6 +65,14 @@ export async function updateWorkItemState(workItemId: number, newState: string):
   await invoke("update_work_item_state", { workItemId, newState });
 }
 
+/** Update a work item's sprint by changing its iteration path in ADO. */
+export async function updateWorkItemIteration(
+  workItemId: number,
+  newIterationPath: string,
+): Promise<void> {
+  await invoke("update_work_item_iteration", { workItemId, newIterationPath });
+}
+
 /** Fetch valid states for a work item type from ADO. */
 export async function getWorkItemTypeStates(workItemType: string): Promise<WorkItemTypeState[]> {
   return await invoke<WorkItemTypeState[]>("get_work_item_type_states", { workItemType });

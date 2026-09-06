@@ -1,6 +1,6 @@
 import { MarkerType, type Edge } from "@xyflow/react";
 import { isNil } from "lodash-es";
-import type { BoardData, Iteration, WorkItem } from "../types";
+import type { BoardData, Iteration, Point, WorkItem } from "../types";
 import type { WorkItemNodeData } from "../components/WorkItemNode";
 import type { SprintDividerData } from "../components/SprintDivider";
 import type { ParentGroupData } from "../components/ParentGroup";
@@ -12,7 +12,7 @@ import { assignLaneOffsets } from "./edgeRouting";
 export const NODE_HEIGHT = 80;
 export const NODE_GAP_X = 60;
 export const NODE_GAP_Y = 20;
-const SPRINT_PADDING = 40;
+export const SPRINT_PADDING = 40;
 const MIN_COLUMN_WIDTH = 1200;
 const TOP_OFFSET = 60;
 export const SUB_COLUMN_WIDTH = 280;
@@ -38,7 +38,7 @@ type CoordExtent = [[number, number], [number, number]];
 interface LayoutNode {
   id: string;
   type: BoardNodeType;
-  position: { x: number; y: number };
+  position: Point;
   data: AnyNodeData;
   parentId?: string;
   extent?: "parent" | CoordExtent;
@@ -1242,15 +1242,10 @@ function layoutRegularItem(
 
   const nodeId = `wi-${workItem.id}`;
   ctx.nodeIdMap.set(workItem.id, nodeId);
-  const extentBounds: CoordExtent = [
-    [colX, TOP_OFFSET],
-    [colX + MIN_COLUMN_WIDTH, Y_EXTENT_MAX],
-  ];
   ctx.nodes.push({
     id: nodeId,
     type: BOARD_NODE_TYPES.workItem,
     position: { x: colX, y: currentY },
-    extent: extentBounds,
     data: {
       workItem,
       isParent,
@@ -1470,7 +1465,7 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
 export function buildNodePositions(
   nodes: readonly {
     id: string;
-    position: { x: number; y: number };
+    position: Point;
     parentId?: string;
     style?: { width?: string | number; height?: string | number };
     measured?: { width?: number; height?: number };

@@ -41,6 +41,7 @@ pub fn run() {
             commands::list_teams,
             commands::list_area_paths,
             ado_writes::update_work_item_state,
+            ado_writes::update_work_item_iteration,
             ado_writes::get_work_item_type_states,
             ado_writes::add_dependency,
             ado_writes::remove_dependency,

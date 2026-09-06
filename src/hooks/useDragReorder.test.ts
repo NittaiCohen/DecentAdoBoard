@@ -6,6 +6,7 @@ import {
   buildDragStopNodes,
   buildSlotPositions,
   collectSuccessorChain,
+  constrainDragPosition,
   computeInsertIndex,
   extractWorkItemId,
   type DragState,
@@ -534,7 +535,7 @@ describe("buildDragStartState", () => {
     expect(state.successorOriginalX.get("wi-3")).toBe(500);
   });
 
-  it("sets xLocked when dragged item has a predecessor in the same column", () => {
+  it("allows horizontal movement even when a predecessor is in the same column", () => {
     const wiMap = new Map<number, WorkItem>([
       [1, generateWorkItem({ id: 1, predecessors: [], successors: [2] })],
       [2, generateWorkItem({ id: 2, predecessors: [1], successors: [] })],
@@ -549,7 +550,7 @@ describe("buildDragStartState", () => {
     const state = buildDragStartState(nodes, nodes[1], wiMap);
 
     expect(state.draggedId).toBe("wi-2");
-    expect(state.xLocked).toBe(true);
+    expect(state.xLocked).toBe(false);
   });
 
   it("handles dragging a node with no work item mapping", () => {
@@ -562,8 +563,8 @@ describe("buildDragStartState", () => {
 
     const state = buildDragStartState(nodes, nodes[0], wiMap);
 
-    // No work item found: xLocked defaults to true, no successors
-    expect(state.xLocked).toBe(true);
+    // Unknown nodes can still move between sprint columns.
+    expect(state.xLocked).toBe(false);
     expect(state.successorIds.size).toBe(0);
   });
 
@@ -599,6 +600,68 @@ describe("buildDragStartState", () => {
     expect(state.siblingById.has("wi-6")).toBe(true);
     expect(state.siblingById.has("wi-1")).toBe(false);
     expect(state.siblings).toHaveLength(1);
+  });
+
+  it("locks movement inside the current sprint and keeps the original Y position", () => {
+    const state = generateDragState({
+      draggedOrigX: 100,
+      draggedOrigY: 140,
+      siblings: [{ id: "wi-1", origY: 220, height: NODE_HEIGHT }],
+      siblingById: new Map([["wi-1", { id: "wi-1", origY: 220, height: NODE_HEIGHT }]]),
+      sprintRanges: [
+        { left: 0, right: 500 },
+        { left: 600, right: 1100 },
+      ],
+    });
+
+    expect(constrainDragPosition(state, { x: 300, y: 420 })).toEqual({
+      x: 100,
+      y: 140,
+    });
+  });
+
+  it("allows movement into another sprint while keeping the original Y position", () => {
+    const state = generateDragState({
+      draggedOrigX: 100,
+      draggedOrigY: 140,
+      sprintRanges: [
+        { left: 0, right: 500 },
+        { left: 600, right: 1100, dropX: 640, dropY: 320 },
+      ],
+    });
+
+    expect(constrainDragPosition(state, { x: 700, y: 420 })).toEqual({
+      x: 640,
+      y: 320,
+    });
+  });
+
+  it("keeps the dragged node at its original Y position when the drag ends", () => {
+    const state = generateDragState({
+      draggedOrigX: 100,
+      draggedOrigY: 140,
+      siblings: [{ id: "wi-1", origY: 220, height: NODE_HEIGHT }],
+      siblingById: new Map([["wi-1", { id: "wi-1", origY: 220, height: NODE_HEIGHT }]]),
+      sprintRanges: [
+        { left: 0, right: 500 },
+        { left: 600, right: 1100, dropX: 640, dropY: 320 },
+      ],
+    });
+    const nodes = [
+      { ...mockNode("wi-dragged", 100, 140), draggable: true },
+      { ...mockNode("wi-1", 100, 220), draggable: true },
+    ];
+
+    const result = buildDragStopNodes(nodes, state, {
+      ...nodes[0],
+      position: { x: 700, y: 420 },
+    });
+
+    expect(result.find((node) => node.id === "wi-dragged")?.position).toEqual({
+      x: 640,
+      y: 320,
+    });
+    expect(result.find((node) => node.id === "wi-1")?.position.y).toBe(220);
   });
 
   it("real scenario: A→C, B→C, D→B, E→F with A/B/E in same column", () => {

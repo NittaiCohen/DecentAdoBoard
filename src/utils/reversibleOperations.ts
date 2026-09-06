@@ -1,12 +1,23 @@
 import type { Node } from "@xyflow/react";
 import type { QueryClient } from "@tanstack/react-query";
-import type { BoardData } from "../types";
-import { addDependency, removeDependency, updateWorkItemState } from "../api/tauri";
+import type { BoardData, Point } from "../types";
+import {
+  addDependency,
+  removeDependency,
+  updateWorkItemIteration,
+  updateWorkItemState,
+} from "../api/tauri";
 
-export type NodePositionSnapshot = Map<string, { x: number; y: number }>;
+export type NodePositionSnapshot = Map<string, Point>;
+
+export interface IterationChange {
+  workItemId: number;
+  fromIterationPath: string;
+  toIterationPath: string;
+}
 
 export function capturePositions(nodes: Node[]): NodePositionSnapshot {
-  const snapshot = new Map<string, { x: number; y: number }>();
+  const snapshot = new Map<string, Point>();
   nodes.forEach((n) => {
     snapshot.set(n.id, { x: n.position.x, y: n.position.y });
   });
@@ -27,6 +38,12 @@ export type ReversibleOperation =
   | { type: "addDependencyRelation"; sourceId: number; targetId: number }
   | { type: "removeDependencyRelation"; sourceId: number; targetId: number }
   | { type: "changeWorkItemState"; workItemId: number; fromState: string; toState: string }
+  | ({ type: "changeWorkItemIteration" } & IterationChange)
+  | ({
+      type: "moveWorkItem";
+      before: NodePositionSnapshot;
+      after: NodePositionSnapshot;
+    } & IterationChange)
   | { type: "moveNodes"; before: NodePositionSnapshot; after: NodePositionSnapshot };
 
 export function reverseOperation(op: ReversibleOperation): ReversibleOperation {
@@ -41,6 +58,22 @@ export function reverseOperation(op: ReversibleOperation): ReversibleOperation {
         workItemId: op.workItemId,
         fromState: op.toState,
         toState: op.fromState,
+      };
+    case "changeWorkItemIteration":
+      return {
+        type: "changeWorkItemIteration",
+        workItemId: op.workItemId,
+        fromIterationPath: op.toIterationPath,
+        toIterationPath: op.fromIterationPath,
+      };
+    case "moveWorkItem":
+      return {
+        type: "moveWorkItem",
+        workItemId: op.workItemId,
+        before: op.after,
+        after: op.before,
+        fromIterationPath: op.toIterationPath,
+        toIterationPath: op.fromIterationPath,
       };
     case "moveNodes":
       return { type: "moveNodes", before: op.after, after: op.before };
@@ -133,6 +166,25 @@ function applyChangeWorkItemState(
   });
 }
 
+function applyChangeWorkItemIteration(
+  workItemId: number,
+  toIterationPath: string,
+  queryClient: QueryClient,
+): void {
+  void updateWorkItemIteration(workItemId, toIterationPath);
+  queryClient.setQueryData<BoardData>(["boardData"], (old) => {
+    if (!old) {
+      return old;
+    }
+    return {
+      ...old,
+      work_items: old.work_items.map((workItem) =>
+        workItem.id === workItemId ? { ...workItem, iteration_path: toIterationPath } : workItem,
+      ),
+    };
+  });
+}
+
 // --- Apply operation ---
 
 export function applyOperation(op: ReversibleOperation, context: OperationContext): void {
@@ -147,6 +199,19 @@ export function applyOperation(op: ReversibleOperation, context: OperationContex
     }
     case "changeWorkItemState": {
       applyChangeWorkItemState(op.workItemId, op.toState, context.queryClient);
+      break;
+    }
+    case "changeWorkItemIteration": {
+      applyChangeWorkItemIteration(op.workItemId, op.toIterationPath, context.queryClient);
+      break;
+    }
+    case "moveWorkItem": {
+      applyChangeWorkItemIteration(op.workItemId, op.toIterationPath, context.queryClient);
+      context.setNodes((current) => {
+        const restored = applyPositionSnapshot(current, op.after);
+        context.onDragSettled?.(restored);
+        return restored;
+      });
       break;
     }
     case "moveNodes": {

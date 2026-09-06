@@ -2,10 +2,10 @@ import { useCallback, useEffect, useRef } from "react";
 import type React from "react";
 import { isNil } from "lodash-es";
 import type { Node } from "@xyflow/react";
-import type { WorkItem } from "../types";
+import type { Point, WorkItem } from "../types";
 import { BOARD_NODE_TYPES } from "../types/graph";
-import { NODE_HEIGHT, NODE_GAP_Y } from "../utils/graphLayout";
-import type { ReversibleOperation } from "../utils/reversibleOperations";
+import { NODE_HEIGHT, NODE_GAP_Y, SPRINT_PADDING } from "../utils/graphLayout";
+import type { IterationChange, ReversibleOperation } from "../utils/reversibleOperations";
 import { capturePositions } from "../utils/reversibleOperations";
 
 const SUB_COLUMN_WIDTH_FALLBACK = 280;
@@ -33,8 +33,17 @@ export interface DragState {
   successorIds: Set<string>;
   successorOriginalX: Map<string, number>;
   xLocked: boolean;
+  sprintRanges?: SprintRange[];
   lastInsertIdx: number;
   lastSlotPositions: Map<string, number>;
+}
+
+interface SprintRange {
+  iterationPath?: string;
+  left: number;
+  right: number;
+  dropX?: number;
+  dropY?: number;
 }
 
 interface FinalizeNodeOptions {
@@ -94,31 +103,67 @@ export function collectSuccessorChain(
   return result;
 }
 
-/** Check whether the dragged work item has a predecessor in the same visual column. */
-function hasPredecessorInColumn(
-  workItem: WorkItem,
-  dragX: number,
-  dragWidth: number,
-  nodeMap: Map<string, Node>,
-): boolean {
-  for (const predecessorId of workItem.predecessors) {
-    const predecessorNode =
-      nodeMap.get(`${WORK_ITEM_NODE_PREFIX}${predecessorId}`) ??
-      nodeMap.get(`${GROUP_NODE_PREFIX}${predecessorId}`);
-    if (!predecessorNode) {
+function buildSprintRanges(nodes: Node[]): SprintRange[] {
+  const sprintRanges = nodes
+    .filter((node) => node.type === BOARD_NODE_TYPES.sprintDivider)
+    .map((node) => ({
+      iterationPath: String(node.data.iterationPath),
+      left: node.position.x,
+      right: node.position.x + Number(node.data.width ?? 0),
+      dropX: node.position.x + SPRINT_PADDING / 2,
+      dropY: NODE_HEIGHT + NODE_GAP_Y,
+    }))
+    .filter((range) => range.right > range.left)
+    .sort((first, second) => first.left - second.left);
+
+  const eligibleNodes = nodes
+    .filter((node) => !node.parentId)
+    .filter(
+      (node) =>
+        node.type === BOARD_NODE_TYPES.workItem || node.type === BOARD_NODE_TYPES.parentGroup,
+    );
+
+  for (const node of eligibleNodes) {
+    const nodeWidth = node.measured?.width ?? Number(node.style?.width ?? 0);
+    const nodeHeight = node.measured?.height ?? Number(node.style?.height ?? NODE_HEIGHT);
+    const sprintIndex = findSprintIndex(node.position.x + nodeWidth / 2, sprintRanges);
+    const sprintRange = sprintRanges[sprintIndex];
+    if (!sprintRange) {
       continue;
     }
-    const predecessorWidth = predecessorNode.style?.width
-      ? Number(predecessorNode.style.width)
-      : SUB_COLUMN_WIDTH_FALLBACK;
-    const hasXOverlap =
-      dragX < predecessorNode.position.x + predecessorWidth &&
-      dragX + dragWidth > predecessorNode.position.x;
-    if (hasXOverlap) {
-      return true;
-    }
+
+    sprintRange.dropX = Math.min(sprintRange.dropX ?? node.position.x, node.position.x);
+    sprintRange.dropY = Math.max(
+      sprintRange.dropY ?? NODE_HEIGHT + NODE_GAP_Y,
+      node.position.y + nodeHeight + NODE_GAP_Y,
+    );
   }
-  return false;
+
+  return sprintRanges;
+}
+
+function findSprintIndex(x: number, sprintRanges: SprintRange[]): number {
+  return sprintRanges.findIndex((range) => x >= range.left && x <= range.right);
+}
+
+function findIterationPath(x: number, sprintRanges: SprintRange[]): string | undefined {
+  const sprintIndex = findSprintIndex(x, sprintRanges);
+  return sprintRanges[sprintIndex]?.iterationPath;
+}
+
+export function constrainDragPosition(state: DragState, position: Point): Point {
+  const sprintRanges = state.sprintRanges ?? [];
+  const originalSprintIndex = findSprintIndex(state.draggedOrigX, sprintRanges);
+  const currentSprintIndex = findSprintIndex(position.x, sprintRanges);
+  const targetRange = sprintRanges[currentSprintIndex];
+  const isInAnotherSprint =
+    originalSprintIndex >= 0 &&
+    currentSprintIndex >= 0 &&
+    originalSprintIndex !== currentSprintIndex;
+  const x = isInAnotherSprint ? (targetRange?.dropX ?? position.x) : state.draggedOrigX;
+  const y = isInAnotherSprint ? (targetRange?.dropY ?? state.draggedOrigY) : state.draggedOrigY;
+
+  return { x, y };
 }
 
 /** Build the initial drag state from current nodes and the dragged node */
@@ -143,10 +188,7 @@ export function buildDragStartState(
 
   const workItemId = extractWorkItemId(draggedNode.id);
   const draggedWorkItem = isNil(workItemId) ? undefined : wiMap.get(workItemId);
-
-  const xLocked = draggedWorkItem
-    ? hasPredecessorInColumn(draggedWorkItem, dragX, dragWidth, nodeMap)
-    : true;
+  const sprintRanges = buildSprintRanges(prev);
 
   const successorIds = draggedWorkItem
     ? collectSuccessorChain(draggedWorkItem.id, wiMap, nodeMap)
@@ -190,7 +232,8 @@ export function buildDragStartState(
     baseY,
     successorIds,
     successorOriginalX,
-    xLocked,
+    xLocked: false,
+    sprintRanges,
     lastInsertIdx: -1,
     lastSlotPositions: new Map(),
   };
@@ -428,6 +471,15 @@ function computeDragFrameState(
   state: DragState,
   draggedNode: Node,
 ): { slotPositions: Map<string, number>; ghostY: number; deltaX: number } {
+  if (state.sprintRanges !== undefined) {
+    const deltaX = draggedNode.position.x - state.draggedOrigX;
+    return {
+      slotPositions: new Map(),
+      ghostY: draggedNode.position.y,
+      deltaX,
+    };
+  }
+
   const xDrift = Math.abs(draggedNode.position.x - state.columnX);
   const inOriginalColumn = xDrift < SUB_COLUMN_WIDTH_FALLBACK;
 
@@ -463,21 +515,23 @@ export function buildDragStopNodes(
       .map((node) => (node.className ? { ...node, className: undefined } : node));
   }
 
-  const xDrift = Math.abs(draggedNode.position.x - state.columnX);
+  const constrainedPosition = constrainDragPosition(state, draggedNode.position);
+  const finalDraggedNode = { ...draggedNode, position: constrainedPosition };
+  const xDrift = Math.abs(finalDraggedNode.position.x - state.columnX);
   const inOriginalColumn = xDrift < SUB_COLUMN_WIDTH_FALLBACK;
 
   let slotPositions = new Map<string, number>();
-  let ghostY = draggedNode.position.y;
+  let ghostY = finalDraggedNode.position.y;
 
-  if (inOriginalColumn) {
+  if (state.sprintRanges === undefined && inOriginalColumn) {
     const insertIdx = state.lastInsertIdx >= 0 ? state.lastInsertIdx : state.siblings.length;
     const slots = buildSlotPositions(state, insertIdx);
     slotPositions = slots.slotPositions;
     ghostY = slots.ghostY;
   }
 
-  const finalX = state.xLocked ? state.draggedOrigX : draggedNode.position.x;
-  const deltaX = state.xLocked ? 0 : draggedNode.position.x - state.draggedOrigX;
+  const finalX = state.xLocked ? state.draggedOrigX : finalDraggedNode.position.x;
+  const deltaX = state.xLocked ? 0 : finalDraggedNode.position.x - state.draggedOrigX;
 
   const finalizeOptions: FinalizeNodeOptions = { state, slotPositions, deltaX, finalX, ghostY };
   return prev
@@ -485,15 +539,105 @@ export function buildDragStopNodes(
     .map((node) => finalizeNodePosition(node, finalizeOptions));
 }
 
-// --- Hook ---
+function getIterationChange(
+  draggedNode: Node,
+  state: DragState | null,
+  wiMap: Map<number, WorkItem>,
+): IterationChange | undefined {
+  const workItemId = extractWorkItemId(draggedNode.id);
+  if (workItemId === undefined) {
+    return undefined;
+  }
+
+  const fromIterationPath = wiMap.get(workItemId)?.iteration_path;
+  const toIterationPath =
+    state === null
+      ? undefined
+      : findIterationPath(draggedNode.position.x, state.sprintRanges ?? []);
+
+  if (
+    fromIterationPath === undefined ||
+    toIterationPath === undefined ||
+    toIterationPath === fromIterationPath
+  ) {
+    return undefined;
+  }
+
+  return { workItemId, fromIterationPath, toIterationPath };
+}
+
+function buildDragUndoOperation(
+  before: ReturnType<typeof capturePositions>,
+  after: ReturnType<typeof capturePositions>,
+  iterationChange: IterationChange | undefined,
+): ReversibleOperation {
+  if (iterationChange) {
+    return {
+      type: "moveWorkItem",
+      workItemId: iterationChange.workItemId,
+      before,
+      after,
+      fromIterationPath: iterationChange.fromIterationPath,
+      toIterationPath: iterationChange.toIterationPath,
+    };
+  }
+
+  return { type: "moveNodes", before, after };
+}
 
 type SetNodes = (updater: (prev: Node[]) => Node[]) => void;
+
+interface FinishDragOptions {
+  draggedNode: Node;
+  state: DragState | null;
+  beforePositions: ReturnType<typeof capturePositions>;
+  setNodes: SetNodes;
+  wiMap: Map<number, WorkItem>;
+  onDragSettled?: (finalNodes: Node[]) => void;
+  onUndoPush?: (op: ReversibleOperation) => void;
+  onSprintChange?: (workItemId: number, iterationPath: string) => void;
+}
+
+function finishDrag({
+  draggedNode,
+  state,
+  beforePositions,
+  setNodes,
+  wiMap,
+  onDragSettled,
+  onUndoPush,
+  onSprintChange,
+}: FinishDragOptions): void {
+  setNodes((prev) => {
+    const constrainedPosition = state
+      ? constrainDragPosition(state, draggedNode.position)
+      : draggedNode.position;
+    const constrainedNode = { ...draggedNode, position: constrainedPosition };
+    const finalNodes = buildDragStopNodes(prev, state, constrainedNode);
+    onDragSettled?.(finalNodes);
+
+    const iterationChange = getIterationChange(constrainedNode, state, wiMap);
+    if (iterationChange) {
+      onSprintChange?.(iterationChange.workItemId, iterationChange.toIterationPath);
+    }
+
+    if (onUndoPush) {
+      const afterPositions = capturePositions(finalNodes);
+      onUndoPush(buildDragUndoOperation(beforePositions, afterPositions, iterationChange));
+    }
+
+    return finalNodes;
+  });
+}
+
+// --- Hook ---
 
 export function useDragReorder(
   setNodes: SetNodes,
   wiMap: Map<number, WorkItem>,
   onDragSettled?: (finalNodes: Node[]) => void,
   onUndoPush?: (op: ReversibleOperation) => void,
+  onSprintChange?: (workItemId: number, iterationPath: string) => void,
 ) {
   const dragRef = useRef<DragState | null>(null);
   const rafRef = useRef(0);
@@ -530,7 +674,12 @@ export function useDragReorder(
         if (!state) {
           return;
         }
-        const { slotPositions, ghostY, deltaX } = computeDragFrameState(state, draggedNode);
+        const constrainedPosition = constrainDragPosition(state, draggedNode.position);
+        const constrainedNode = {
+          ...draggedNode,
+          position: constrainedPosition,
+        };
+        const { slotPositions, ghostY, deltaX } = computeDragFrameState(state, constrainedNode);
         setNodes((prev) =>
           prev.map((node) => applyDragFrame(node, state, slotPositions, ghostY, deltaX)),
         );
@@ -544,24 +693,19 @@ export function useDragReorder(
       cancelAnimationFrame(rafRef.current);
       const state = dragRef.current;
       const beforePositions = preDragPositionsRef.current;
-      setNodes((prev) => {
-        const finalNodes = buildDragStopNodes(prev, state, draggedNode);
-        onDragSettled?.(finalNodes);
-
-        if (onUndoPush) {
-          const afterPositions = capturePositions(finalNodes);
-          onUndoPush({
-            type: "moveNodes",
-            before: beforePositions,
-            after: afterPositions,
-          });
-        }
-
-        return finalNodes;
+      finishDrag({
+        draggedNode,
+        state,
+        beforePositions,
+        setNodes,
+        wiMap: wiMapRef.current,
+        onDragSettled,
+        onUndoPush,
+        onSprintChange,
       });
       dragRef.current = null;
     },
-    [setNodes, onDragSettled, onUndoPush],
+    [setNodes, onDragSettled, onUndoPush, onSprintChange, wiMapRef],
   );
 
   return { handleNodeDragStart, handleNodeDrag, handleNodeDragStop };

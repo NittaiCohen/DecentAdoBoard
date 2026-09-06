@@ -2,10 +2,12 @@ import { renderHook, act } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { useUndoRedo } from "./useUndoRedo";
 import type { OperationContext, ReversibleOperation } from "../utils/reversibleOperations";
+import { updateWorkItemIteration } from "../api/tauri";
 
 vi.mock("../api/tauri", () => ({
   addDependency: vi.fn().mockResolvedValue(undefined),
   removeDependency: vi.fn().mockResolvedValue(undefined),
+  updateWorkItemIteration: vi.fn().mockResolvedValue(undefined),
   updateWorkItemState: vi.fn().mockResolvedValue(undefined),
 }));
 
@@ -61,6 +63,26 @@ describe("useUndoRedo", () => {
 
     expect(result.current.canUndo()).toBe(true);
     expect(result.current.canRedo()).toBe(false);
+  });
+
+  it("undoes a work item move and its iteration change together", () => {
+    const contextRef = makeContextRef();
+    const { result } = renderHook(() => useUndoRedo(contextRef));
+    const operation: ReversibleOperation = {
+      type: "moveWorkItem",
+      workItemId: 42,
+      before: new Map([["wi-42", { x: 100, y: 100 }]]),
+      after: new Map([["wi-42", { x: 900, y: 300 }]]),
+      fromIterationPath: "Project\\Sprint 1",
+      toIterationPath: "Project\\Sprint 2",
+    };
+
+    vi.mocked(updateWorkItemIteration).mockClear();
+    act(() => result.current.push(operation));
+    act(() => result.current.undo());
+
+    expect(updateWorkItemIteration).toHaveBeenCalledWith(42, "Project\\Sprint 1");
+    expect(contextRef.current?.setNodes).toHaveBeenCalledTimes(1);
   });
 
   it("clears redo stack on new push", () => {
