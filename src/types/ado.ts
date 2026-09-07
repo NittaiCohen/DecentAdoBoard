@@ -91,6 +91,10 @@ export interface WorkItemOverview {
   fieldDefinitions: WorkItemFieldDefinition[];
 }
 
+export interface ProjectTag {
+  name: string;
+}
+
 export interface WorkItemFieldUpdate {
   referenceName: string;
   value: JsonValue;

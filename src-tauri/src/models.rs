@@ -58,6 +58,16 @@ pub struct IdentitySearchResult {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct ProjectTagsResponse {
+    pub value: Vec<ProjectTag>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectTag {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct AdoRelation {
     pub rel: String,
     pub url: String,

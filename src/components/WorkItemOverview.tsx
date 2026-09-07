@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { updateWorkItemFields } from "../api/tauri";
 import AssignedToSelector from "./AssignedToSelector";
+import TagsEditor from "./TagsEditor";
 import WorkItemPathSelector from "./WorkItemPathSelector";
 import RichTextFieldEditor from "./RichTextFieldEditor";
 import StateSelector from "./StateSelector";
@@ -71,12 +72,14 @@ function getBoardAssignedToValue(value: JsonValue): string | null {
 const TITLE_FIELD_REFERENCE = "System.Title";
 const STATE_FIELD_REFERENCE = "System.State";
 const ASSIGNED_TO_FIELD_REFERENCE = "System.AssignedTo";
+const TAGS_FIELD_REFERENCE = "System.Tags";
 const AREA_PATH_FIELD_REFERENCE = "System.AreaPath";
 const ITERATION_PATH_FIELD_REFERENCE = "System.IterationPath";
 const SPECIAL_FIELD_REFERENCES = new Set([
   TITLE_FIELD_REFERENCE,
   STATE_FIELD_REFERENCE,
   ASSIGNED_TO_FIELD_REFERENCE,
+  TAGS_FIELD_REFERENCE,
   AREA_PATH_FIELD_REFERENCE,
   ITERATION_PATH_FIELD_REFERENCE,
 ]);
@@ -353,6 +356,7 @@ function OverviewContent({
     [overview.fieldDefinitions, overview.workItemType],
   );
   const typeColorClass = TYPE_COLORS[overview.workItemType] ?? DEFAULT_TYPE_COLOR;
+  const tagsField = availableFields.find((field) => field.referenceName === TAGS_FIELD_REFERENCE);
   const fieldsWithDefaults = useMemo(
     () =>
       Object.fromEntries(
@@ -478,6 +482,18 @@ function OverviewContent({
             className="w-full bg-transparent text-xl font-semibold outline-none ring-0"
             aria-label="Title"
           />
+          {tagsField && (
+            <TagsEditor
+              value={draftFields[TAGS_FIELD_REFERENCE] ?? null}
+              disabled={tagsField.readOnly}
+              onChange={(value) =>
+                setDraftFields((current) => ({
+                  ...current,
+                  [TAGS_FIELD_REFERENCE]: value,
+                }))
+              }
+            />
+          )}
           <div className="grid grid-cols-[200px_minmax(0,1fr)] items-end gap-x-4 gap-y-2">
             {getHeaderFields(availableFields).map((field) => (
               <div key={field.referenceName} className="min-w-0 space-y-1">

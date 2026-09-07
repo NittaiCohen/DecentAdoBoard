@@ -41,6 +41,7 @@ pub fn run() {
             commands::list_teams,
             commands::list_area_paths,
             commands::list_iteration_paths,
+            commands::search_project_tags,
             commands::get_work_item_overview,
             commands::search_identities,
             ado_writes::update_work_item_state,

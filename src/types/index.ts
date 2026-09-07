@@ -12,6 +12,7 @@ export {
   type JsonValue,
   type WorkItemFieldDefinition,
   type WorkItemOverview,
+  type ProjectTag,
   type WorkItemFieldUpdate,
 } from "./ado";
 

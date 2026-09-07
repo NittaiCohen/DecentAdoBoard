@@ -5,6 +5,8 @@ use crate::auth;
 use crate::models::*;
 use crate::state::AppState;
 
+const MAX_PROJECT_TAG_SEARCH_RESULTS: usize = 50;
+
 #[tauri::command]
 pub async fn set_config(
     state: State<'_, AppState>,
@@ -301,6 +303,42 @@ pub async fn list_iteration_paths(
     let mut paths = Vec::new();
     flatten_area_paths(&data, "", &mut paths);
     Ok(paths)
+}
+
+#[tauri::command]
+pub async fn search_project_tags(
+    state: State<'_, AppState>,
+    organization: String,
+    project: String,
+    search_text: String,
+) -> Result<Vec<ProjectTag>, String> {
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/tags?api-version=7.1-preview.1",
+        organization, project
+    );
+
+    let resp = state
+        .http_client
+        .get(&url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("Project tags request failed: {e}"))?;
+
+    let resp = crate::ado_client::check_response(resp, "Project tags").await?;
+    let data: ProjectTagsResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Project tags parse error: {e}"))?;
+
+    let normalized_search_text = search_text.trim().to_lowercase();
+    Ok(data
+        .value
+        .into_iter()
+        .filter(|tag| tag.name.to_lowercase().contains(&normalized_search_text))
+        .take(MAX_PROJECT_TAG_SEARCH_RESULTS)
+        .collect())
 }
 
 fn flatten_area_paths(node: &ClassificationNodeResponse, prefix: &str, paths: &mut Vec<String>) {

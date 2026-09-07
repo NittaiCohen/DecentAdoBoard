@@ -4,6 +4,7 @@ import type {
   BoardData,
   IdentitySearchResult,
   ProjectInfo,
+  ProjectTag,
   TeamInfo,
   WorkItemFieldUpdate,
   WorkItemOverview,
@@ -67,6 +68,19 @@ export async function listAreaPaths(organization: string, project: string): Prom
 /** Fetch all iteration paths in a project from the Rust backend. */
 export async function listIterationPaths(organization: string, project: string): Promise<string[]> {
   return await invoke<string[]>("list_iteration_paths", { organization, project });
+}
+
+/** Search project tags for work item tag autocomplete. */
+export async function searchProjectTags(
+  organization: string,
+  project: string,
+  searchText: string,
+): Promise<ProjectTag[]> {
+  return await invoke<ProjectTag[]>("search_project_tags", {
+    organization,
+    project,
+    searchText,
+  });
 }
 
 /** Fetch the full board data (work items + iterations) from the Rust backend. */
