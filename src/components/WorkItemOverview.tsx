@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { updateWorkItemFields } from "../api/tauri";
 import AssignedToSelector from "./AssignedToSelector";
+import WorkItemPathSelector from "./WorkItemPathSelector";
 import StateSelector from "./StateSelector";
 import {
   ALWAYS_VISIBLE_OVERVIEW_FIELD_REFERENCES,
@@ -68,11 +69,30 @@ function getBoardAssignedToValue(value: JsonValue): string | null {
 const TITLE_FIELD_REFERENCE = "System.Title";
 const STATE_FIELD_REFERENCE = "System.State";
 const ASSIGNED_TO_FIELD_REFERENCE = "System.AssignedTo";
+const AREA_PATH_FIELD_REFERENCE = "System.AreaPath";
+const ITERATION_PATH_FIELD_REFERENCE = "System.IterationPath";
 const SPECIAL_FIELD_REFERENCES = new Set([
   TITLE_FIELD_REFERENCE,
   STATE_FIELD_REFERENCE,
   ASSIGNED_TO_FIELD_REFERENCE,
+  AREA_PATH_FIELD_REFERENCE,
+  ITERATION_PATH_FIELD_REFERENCE,
 ]);
+const HEADER_FIELD_ORDER = [
+  ASSIGNED_TO_FIELD_REFERENCE,
+  AREA_PATH_FIELD_REFERENCE,
+  STATE_FIELD_REFERENCE,
+  ITERATION_PATH_FIELD_REFERENCE,
+];
+
+function getHeaderFields(fields: WorkItemFieldDefinition[]): WorkItemFieldDefinition[] {
+  const fieldsByReference = new Map(fields.map((field) => [field.referenceName, field]));
+
+  return HEADER_FIELD_ORDER.flatMap((referenceName) => {
+    const field = fieldsByReference.get(referenceName);
+    return field ? [field] : [];
+  });
+}
 
 function parseInputValue(field: WorkItemFieldDefinition, inputValue: string): JsonValue {
   const normalizedType = field.fieldType.toLowerCase();
@@ -179,6 +199,28 @@ function SpecialFieldEditor({
 
   if (field.referenceName === ASSIGNED_TO_FIELD_REFERENCE) {
     return <AssignedToSelector value={value} disabled={field.readOnly} onChange={onChange} />;
+  }
+
+  if (field.referenceName === AREA_PATH_FIELD_REFERENCE) {
+    return (
+      <WorkItemPathSelector
+        pathType="area"
+        value={value}
+        disabled={field.readOnly}
+        onChange={onChange}
+      />
+    );
+  }
+
+  if (field.referenceName === ITERATION_PATH_FIELD_REFERENCE) {
+    return (
+      <WorkItemPathSelector
+        pathType="iteration"
+        value={value}
+        disabled={field.readOnly}
+        onChange={onChange}
+      />
+    );
   }
 
   return <FieldEditor field={field} value={value} onChange={onChange} />;
@@ -420,28 +462,25 @@ function OverviewContent({
             className="w-full bg-transparent text-xl font-semibold outline-none ring-0"
             aria-label="Title"
           />
-          <div className="flex flex-wrap items-end gap-4">
-            {availableFields
-              .filter((field) => SPECIAL_FIELD_REFERENCES.has(field.referenceName))
-              .filter((field) => field.referenceName !== TITLE_FIELD_REFERENCE)
-              .map((field) => (
-                <div key={field.referenceName} className="min-w-36 space-y-1">
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
-                    {field.name}
-                  </label>
-                  <SpecialFieldEditor
-                    field={field}
-                    workItemType={overview.workItemType}
-                    value={draftFields[field.referenceName] ?? null}
-                    onChange={(value) =>
-                      setDraftFields((current) => ({
-                        ...current,
-                        [field.referenceName]: value,
-                      }))
-                    }
-                  />
-                </div>
-              ))}
+          <div className="grid grid-cols-[200px_minmax(0,1fr)] items-end gap-x-4 gap-y-2">
+            {getHeaderFields(availableFields).map((field) => (
+              <div key={field.referenceName} className="min-w-0 space-y-1">
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {field.name}
+                </label>
+                <SpecialFieldEditor
+                  field={field}
+                  workItemType={overview.workItemType}
+                  value={draftFields[field.referenceName] ?? null}
+                  onChange={(value) =>
+                    setDraftFields((current) => ({
+                      ...current,
+                      [field.referenceName]: value,
+                    }))
+                  }
+                />
+              </div>
+            ))}
           </div>
         </div>
         <button

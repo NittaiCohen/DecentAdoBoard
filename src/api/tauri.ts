@@ -64,6 +64,11 @@ export async function listAreaPaths(organization: string, project: string): Prom
   return await invoke<string[]>("list_area_paths", { organization, project });
 }
 
+/** Fetch all iteration paths in a project from the Rust backend. */
+export async function listIterationPaths(organization: string, project: string): Promise<string[]> {
+  return await invoke<string[]>("list_iteration_paths", { organization, project });
+}
+
 /** Fetch the full board data (work items + iterations) from the Rust backend. */
 export async function getBoardData(): Promise<BoardData> {
   return await invoke<BoardData>("get_board_data");

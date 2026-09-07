@@ -272,6 +272,37 @@ pub async fn list_area_paths(
     Ok(paths)
 }
 
+#[tauri::command]
+pub async fn list_iteration_paths(
+    state: State<'_, AppState>,
+    organization: String,
+    project: String,
+) -> Result<Vec<String>, String> {
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/classificationnodes/Iterations?$depth=10&api-version=7.1",
+        organization, project
+    );
+
+    let resp = state
+        .http_client
+        .get(&url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("Iteration paths request failed: {e}"))?;
+
+    let resp = crate::ado_client::check_response(resp, "Iteration paths").await?;
+    let data: ClassificationNodeResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Iteration paths parse error: {e}"))?;
+
+    let mut paths = Vec::new();
+    flatten_area_paths(&data, "", &mut paths);
+    Ok(paths)
+}
+
 fn flatten_area_paths(node: &ClassificationNodeResponse, prefix: &str, paths: &mut Vec<String>) {
     let full_path = if prefix.is_empty() {
         node.name.clone()
