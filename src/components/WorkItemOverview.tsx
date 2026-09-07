@@ -2,19 +2,25 @@ import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { updateWorkItemFields } from "../api/tauri";
 import AssignedToSelector from "./AssignedToSelector";
+import TagsEditor from "./TagsEditor";
+import WorkItemPathSelector from "./WorkItemPathSelector";
+import WorkItemComments from "./WorkItemComments";
+import RichTextFieldEditor from "./RichTextFieldEditor";
 import StateSelector from "./StateSelector";
 import {
   ALWAYS_VISIBLE_OVERVIEW_FIELD_REFERENCES,
   getDefaultOverviewFieldSelection,
+  getOverviewFieldsForWorkItemType,
 } from "../config/overviewFields";
 import StateBadge from "./StateBadge";
 import { DEFAULT_TYPE_COLOR, TYPE_COLORS } from "../utils/workItemColors";
-import { useWorkItemOverview } from "../hooks/useAdoData";
+import { useWorkItemComments, useWorkItemOverview } from "../hooks/useAdoData";
 import { useWorkItemTypeStates } from "../hooks/useWorkItemTypeStates";
 import { getOrderedStateOptions } from "../utils/workItemStates";
 import type {
   BoardData,
   JsonValue,
+  WorkItemComment,
   WorkItemFieldDefinition,
   WorkItemOverview as WorkItemOverviewData,
 } from "../types";
@@ -68,11 +74,38 @@ function getBoardAssignedToValue(value: JsonValue): string | null {
 const TITLE_FIELD_REFERENCE = "System.Title";
 const STATE_FIELD_REFERENCE = "System.State";
 const ASSIGNED_TO_FIELD_REFERENCE = "System.AssignedTo";
+const TAGS_FIELD_REFERENCE = "System.Tags";
+const AREA_PATH_FIELD_REFERENCE = "System.AreaPath";
+const ITERATION_PATH_FIELD_REFERENCE = "System.IterationPath";
 const SPECIAL_FIELD_REFERENCES = new Set([
   TITLE_FIELD_REFERENCE,
   STATE_FIELD_REFERENCE,
   ASSIGNED_TO_FIELD_REFERENCE,
+  TAGS_FIELD_REFERENCE,
+  AREA_PATH_FIELD_REFERENCE,
+  ITERATION_PATH_FIELD_REFERENCE,
 ]);
+const HEADER_FIELD_ORDER = [
+  ASSIGNED_TO_FIELD_REFERENCE,
+  AREA_PATH_FIELD_REFERENCE,
+  STATE_FIELD_REFERENCE,
+  ITERATION_PATH_FIELD_REFERENCE,
+];
+const RICH_TEXT_FIELD_ORDER = [
+  "System.Description",
+  "Microsoft.VSTS.TCM.ReproSteps",
+  "Microsoft.VSTS.TCM.SystemInfo",
+  "Microsoft.VSTS.Common.AcceptanceCriteria",
+];
+
+function getHeaderFields(fields: WorkItemFieldDefinition[]): WorkItemFieldDefinition[] {
+  const fieldsByReference = new Map(fields.map((field) => [field.referenceName, field]));
+
+  return HEADER_FIELD_ORDER.flatMap((referenceName) => {
+    const field = fieldsByReference.get(referenceName);
+    return field ? [field] : [];
+  });
+}
 
 function parseInputValue(field: WorkItemFieldDefinition, inputValue: string): JsonValue {
   const normalizedType = field.fieldType.toLowerCase();
@@ -98,6 +131,17 @@ function FieldEditor({
   const disabled = field.readOnly || isComplexField(field.fieldType);
   const inputClass =
     "w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm";
+
+  if (normalizedType === "html") {
+    return (
+      <RichTextFieldEditor
+        label={field.name}
+        value={getInputValue(value)}
+        editable={!disabled}
+        onChange={(nextValue) => onChange(nextValue)}
+      />
+    );
+  }
 
   if (disabled) {
     return (
@@ -135,7 +179,7 @@ function FieldEditor({
     );
   }
 
-  if (normalizedType === "html" || normalizedType === "plaintext") {
+  if (normalizedType === "plaintext") {
     return (
       <textarea
         className={`${inputClass} min-h-24`}
@@ -179,6 +223,28 @@ function SpecialFieldEditor({
 
   if (field.referenceName === ASSIGNED_TO_FIELD_REFERENCE) {
     return <AssignedToSelector value={value} disabled={field.readOnly} onChange={onChange} />;
+  }
+
+  if (field.referenceName === AREA_PATH_FIELD_REFERENCE) {
+    return (
+      <WorkItemPathSelector
+        pathType="area"
+        value={value}
+        disabled={field.readOnly}
+        onChange={onChange}
+      />
+    );
+  }
+
+  if (field.referenceName === ITERATION_PATH_FIELD_REFERENCE) {
+    return (
+      <WorkItemPathSelector
+        pathType="iteration"
+        value={value}
+        disabled={field.readOnly}
+        onChange={onChange}
+      />
+    );
   }
 
   return <FieldEditor field={field} value={value} onChange={onChange} />;
@@ -281,9 +347,15 @@ function FieldConfiguration({
 function OverviewContent({
   overview,
   onClose,
+  comments,
+  commentsError,
+  commentsLoading,
 }: {
   overview: WorkItemOverviewData;
   onClose: () => void;
+  comments: WorkItemComment[];
+  commentsError: unknown;
+  commentsLoading: boolean;
 }) {
   const queryClient = useQueryClient();
   const [isConfiguring, setIsConfiguring] = useState(false);
@@ -293,8 +365,12 @@ function OverviewContent({
   const [savedFields, setSavedFields] = useState<Record<string, JsonValue>>(overview.fields);
   const [draftFields, setDraftFields] = useState<Record<string, JsonValue>>(overview.fields);
 
-  const availableFields = overview.fieldDefinitions;
+  const availableFields = useMemo(
+    () => getOverviewFieldsForWorkItemType(overview.fieldDefinitions, overview.workItemType),
+    [overview.fieldDefinitions, overview.workItemType],
+  );
   const typeColorClass = TYPE_COLORS[overview.workItemType] ?? DEFAULT_TYPE_COLOR;
+  const tagsField = availableFields.find((field) => field.referenceName === TAGS_FIELD_REFERENCE);
   const fieldsWithDefaults = useMemo(
     () =>
       Object.fromEntries(
@@ -325,6 +401,13 @@ function OverviewContent({
       (selectedReferences.includes(field.referenceName) ||
         ALWAYS_VISIBLE_OVERVIEW_FIELD_REFERENCES.has(field.referenceName)) &&
       !SPECIAL_FIELD_REFERENCES.has(field.referenceName),
+  );
+  const richTextFields = RICH_TEXT_FIELD_ORDER.flatMap((referenceName) => {
+    const field = visibleFields.find((candidate) => candidate.referenceName === referenceName);
+    return field ? [field] : [];
+  });
+  const otherFields = visibleFields.filter(
+    (field) => !RICH_TEXT_FIELD_ORDER.includes(field.referenceName),
   );
   const hasChanges = availableFields.some(
     (field) =>
@@ -399,6 +482,28 @@ function OverviewContent({
     }
   }
 
+  function renderField(field: WorkItemFieldDefinition) {
+    return (
+      <div key={field.referenceName} className="space-y-1">
+        {field.fieldType.toLowerCase() !== "html" && (
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
+            {field.name}
+          </label>
+        )}
+        <FieldEditor
+          field={field}
+          value={draftFields[field.referenceName] ?? null}
+          onChange={(value) =>
+            setDraftFields((current) => ({
+              ...current,
+              [field.referenceName]: value,
+            }))
+          }
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-full flex-col">
       <div
@@ -420,28 +525,37 @@ function OverviewContent({
             className="w-full bg-transparent text-xl font-semibold outline-none ring-0"
             aria-label="Title"
           />
-          <div className="flex flex-wrap items-end gap-4">
-            {availableFields
-              .filter((field) => SPECIAL_FIELD_REFERENCES.has(field.referenceName))
-              .filter((field) => field.referenceName !== TITLE_FIELD_REFERENCE)
-              .map((field) => (
-                <div key={field.referenceName} className="min-w-36 space-y-1">
-                  <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
-                    {field.name}
-                  </label>
-                  <SpecialFieldEditor
-                    field={field}
-                    workItemType={overview.workItemType}
-                    value={draftFields[field.referenceName] ?? null}
-                    onChange={(value) =>
-                      setDraftFields((current) => ({
-                        ...current,
-                        [field.referenceName]: value,
-                      }))
-                    }
-                  />
-                </div>
-              ))}
+          {tagsField && (
+            <TagsEditor
+              value={draftFields[TAGS_FIELD_REFERENCE] ?? null}
+              disabled={tagsField.readOnly}
+              onChange={(value) =>
+                setDraftFields((current) => ({
+                  ...current,
+                  [TAGS_FIELD_REFERENCE]: value,
+                }))
+              }
+            />
+          )}
+          <div className="grid grid-cols-[150px_minmax(0,1fr)] items-end gap-x-4 gap-y-2">
+            {getHeaderFields(availableFields).map((field) => (
+              <div key={field.referenceName} className="min-w-0 space-y-1">
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {field.name}
+                </label>
+                <SpecialFieldEditor
+                  field={field}
+                  workItemType={overview.workItemType}
+                  value={draftFields[field.referenceName] ?? null}
+                  onChange={(value) =>
+                    setDraftFields((current) => ({
+                      ...current,
+                      [field.referenceName]: value,
+                    }))
+                  }
+                />
+              </div>
+            ))}
           </div>
         </div>
         <button
@@ -482,25 +596,16 @@ function OverviewContent({
           </p>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2">
-          {visibleFields.map((field) => (
-            <div key={field.referenceName} className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
-                {field.name}
-              </label>
-              <FieldEditor
-                field={field}
-                value={draftFields[field.referenceName] ?? null}
-                onChange={(value) =>
-                  setDraftFields((current) => ({
-                    ...current,
-                    [field.referenceName]: value,
-                  }))
-                }
-              />
-            </div>
-          ))}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="space-y-4 pt-5">{richTextFields.map(renderField)}</div>
+          <div className="grid gap-4 md:grid-cols-2">{otherFields.map(renderField)}</div>
         </div>
+        <WorkItemComments
+          workItemId={overview.id}
+          comments={comments}
+          commentsError={commentsError}
+          commentsLoading={commentsLoading}
+        />
       </div>
 
       <div className="flex justify-end gap-2 border-t border-gray-200 dark:border-gray-700 px-6 py-3">
@@ -526,6 +631,11 @@ function OverviewContent({
 
 export default function WorkItemOverview({ workItemId, onClose }: WorkItemOverviewProps) {
   const { data, isLoading, error } = useWorkItemOverview(workItemId);
+  const {
+    data: comments = [],
+    error: commentsError,
+    isLoading: commentsLoading,
+  } = useWorkItemComments(workItemId);
 
   return (
     <div
@@ -538,7 +648,7 @@ export default function WorkItemOverview({ workItemId, onClose }: WorkItemOvervi
       }}
     >
       <div
-        className="h-[min(90vh,900px)] w-full max-w-5xl overflow-hidden rounded-xl bg-gray-50 text-gray-900 shadow-2xl dark:bg-gray-900 dark:text-gray-100"
+        className="h-[95vh] w-[95vw] max-w-none overflow-hidden rounded-xl bg-gray-50 text-gray-900 shadow-2xl dark:bg-gray-900 dark:text-gray-100"
         role="dialog"
         aria-modal="true"
         aria-label="Work item overview"
@@ -559,7 +669,15 @@ export default function WorkItemOverview({ workItemId, onClose }: WorkItemOvervi
             </button>
           </div>
         )}
-        {data && <OverviewContent overview={data} onClose={onClose} />}
+        {data && (
+          <OverviewContent
+            overview={data}
+            onClose={onClose}
+            comments={comments}
+            commentsError={commentsError}
+            commentsLoading={commentsLoading}
+          />
+        )}
       </div>
     </div>
   );

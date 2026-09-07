@@ -87,7 +87,7 @@ export default function AssignedToSelector({
   }
 
   return (
-    <div className="relative min-w-52">
+    <div className="relative min-w-[200px]">
       {isOpen ? (
         <>
           <input

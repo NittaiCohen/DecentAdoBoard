@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getDefaultOverviewFieldSelection } from "./overviewFields";
+import {
+  getDefaultOverviewFieldSelection,
+  getOverviewFieldsForWorkItemType,
+} from "./overviewFields";
 
 describe("getDefaultOverviewFieldSelection", () => {
   it("keeps only useful standard overview fields", () => {
@@ -32,25 +35,33 @@ describe("getDefaultOverviewFieldSelection", () => {
     ).toEqual([]);
   });
 
+  it("does not select hidden standard fields by reference name", () => {
+    expect(
+      getDefaultOverviewFieldSelection([
+        { referenceName: "Microsoft.VSTS.Common.Activity", name: "Activity" },
+        { referenceName: "Microsoft.VSTS.Common.Effort", name: "Effort" },
+        { referenceName: "Microsoft.VSTS.Common.StackRank", name: "Stack Rank" },
+        { referenceName: "System.History", name: "History" },
+      ]),
+    ).toEqual([]);
+  });
+
   it("keeps the approved field names and excludes custom fields by default", () => {
     const allowedNames = [
       "Acceptance Criteria",
-      "Activity",
       "Area Path",
       "Assigned To",
       "Completed Work",
       "Description",
-      "Effort",
-      "History",
       "Iteration Path",
       "Original Estimate",
       "Priority",
       "Remaining Work",
       "Repro Steps",
       "Severity",
-      "Stack Rank",
       "State",
       "Story Points",
+      "System Info",
       "Tags",
       "Title",
     ];
@@ -110,5 +121,24 @@ describe("getDefaultOverviewFieldSelection", () => {
         ["Assigned To", "State", "Tags", "Title"].includes(name) ? [] : [`Custom.Allowed${index}`],
       ),
     );
+  });
+});
+
+describe("getOverviewFieldsForWorkItemType", () => {
+  it("excludes Description from Bug overviews", () => {
+    const fields = [
+      { referenceName: "System.Description", name: "Description" },
+      { referenceName: "Microsoft.VSTS.TCM.ReproSteps", name: "Repro Steps" },
+    ];
+
+    expect(getOverviewFieldsForWorkItemType(fields, "Bug")).toEqual([
+      { referenceName: "Microsoft.VSTS.TCM.ReproSteps", name: "Repro Steps" },
+    ]);
+  });
+
+  it("keeps Description for other work item types", () => {
+    const fields = [{ referenceName: "System.Description", name: "Description" }];
+
+    expect(getOverviewFieldsForWorkItemType(fields, "Task")).toEqual(fields);
   });
 });
