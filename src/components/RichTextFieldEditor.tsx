@@ -10,6 +10,7 @@ import { TextStyleKit } from "@tiptap/extension-text-style";
 import UnderlineExtension from "@tiptap/extension-underline";
 import {
   Bold,
+  ChevronDown,
   Code,
   CodeXml,
   Highlighter,
@@ -27,6 +28,7 @@ import {
 } from "lucide-react";
 
 interface RichTextFieldEditorProps {
+  label: string;
   value: string;
   onChange: (value: string) => void;
   editable?: boolean;
@@ -48,6 +50,16 @@ const HEADING_LEVELS = [HEADING_LEVEL_ONE, HEADING_LEVEL_TWO, HEADING_LEVEL_THRE
 
 function sanitizeHtml(value: string): string {
   return DOMPurify.sanitize(value);
+}
+
+function hasRichTextContent(value: string): boolean {
+  const sanitizedValue = sanitizeHtml(value);
+  const textContent = sanitizedValue
+    .replace(/<[^>]*>/g, "")
+    .replace(/&nbsp;/g, "")
+    .trim();
+
+  return textContent.length > 0 || /<(img|hr|table)\b/i.test(sanitizedValue);
 }
 
 function ToolbarButton({
@@ -228,11 +240,13 @@ function RichTextToolbar({ editor }: { editor: Editor }) {
 }
 
 export default function RichTextFieldEditor({
+  label,
   value,
   onChange,
   editable = true,
 }: RichTextFieldEditorProps) {
   const [isSelected, setIsSelected] = useState(false);
+  const [isCollapsed, setIsCollapsed] = useState(() => !hasRichTextContent(value));
   const containerRef = useRef<HTMLDivElement>(null);
   const sanitizedValue = useMemo(() => sanitizeHtml(value), [value]);
   const editor = useEditor({
@@ -259,34 +273,45 @@ export default function RichTextFieldEditor({
     return null;
   }
 
-  if (!editable) {
-    return (
-      <div className="rounded border border-gray-200 bg-white p-3 text-sm dark:border-gray-700 dark:bg-gray-900 [&_a]:text-blue-600 [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-6 [&_p]:mb-2 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-gray-100 [&_pre]:p-2 [&_ul]:list-disc [&_ul]:pl-6">
-        <EditorContent
-          editor={editor}
-          className="[&_.ProseMirror]:outline-none [&_.ProseMirror_a]:text-blue-600 [&_.ProseMirror_a]:underline [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-6 [&_.ProseMirror_p]:mb-2 [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:bg-gray-100 [&_.ProseMirror_pre]:p-2 [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-6"
-        />
-      </div>
-    );
-  }
-
   return (
-    <div
-      ref={containerRef}
-      onFocusCapture={() => setIsSelected(true)}
-      onBlurCapture={(event) => {
-        const relatedTarget = event.relatedTarget;
-        if (!(relatedTarget instanceof Node) || !containerRef.current?.contains(relatedTarget)) {
+    <div className="overflow-hidden rounded border border-gray-300 dark:border-gray-600">
+      <button
+        type="button"
+        onClick={() => {
+          setIsCollapsed((current) => !current);
           setIsSelected(false);
-        }
-      }}
-      className="overflow-hidden rounded border border-gray-300 dark:border-gray-600"
-    >
-      <EditorContent
-        editor={editor}
-        className="min-h-40 bg-white px-3 py-2 text-sm text-gray-900 outline-none dark:bg-gray-900 dark:text-gray-100 [&_.ProseMirror]:min-h-40 [&_.ProseMirror]:outline-none [&_.ProseMirror_a]:text-blue-600 [&_.ProseMirror_a]:underline [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-6 [&_.ProseMirror_p]:mb-2 [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:bg-gray-100 [&_.ProseMirror_pre]:p-2 [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-6"
-      />
-      {isSelected && <RichTextToolbar editor={editor} />}
+        }}
+        className="flex w-full items-center gap-2 bg-gray-50 px-3 py-2 text-left text-sm font-medium text-gray-700 hover:bg-gray-100 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+        aria-expanded={!isCollapsed}
+      >
+        <ChevronDown
+          size={TOOLBAR_ICON_SIZE}
+          className={`transition-transform ${isCollapsed ? "-rotate-90" : ""}`}
+          aria-hidden="true"
+        />
+        {label}
+      </button>
+      {!isCollapsed && (
+        <div
+          ref={containerRef}
+          onFocusCapture={() => setIsSelected(true)}
+          onBlurCapture={(event) => {
+            const relatedTarget = event.relatedTarget;
+            if (
+              !(relatedTarget instanceof Node) ||
+              !containerRef.current?.contains(relatedTarget)
+            ) {
+              setIsSelected(false);
+            }
+          }}
+        >
+          <EditorContent
+            editor={editor}
+            className="min-h-40 bg-white px-3 py-2 text-sm text-gray-900 outline-none dark:bg-gray-900 dark:text-gray-100 [&_.ProseMirror]:min-h-40 [&_.ProseMirror]:outline-none [&_.ProseMirror_a]:text-blue-600 [&_.ProseMirror_a]:underline [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-6 [&_.ProseMirror_p]:mb-2 [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:bg-gray-100 [&_.ProseMirror_pre]:p-2 [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-6"
+          />
+          {editable && isSelected && <RichTextToolbar editor={editor} />}
+        </div>
+      )}
     </div>
   );
 }

@@ -123,6 +123,7 @@ function FieldEditor({
   if (normalizedType === "html") {
     return (
       <RichTextFieldEditor
+        label={field.name}
         value={getInputValue(value)}
         editable={!disabled}
         onChange={(nextValue) => onChange(nextValue)}
@@ -535,9 +536,11 @@ function OverviewContent({
         <div className="grid gap-4 md:grid-cols-2">
           {visibleFields.map((field) => (
             <div key={field.referenceName} className="space-y-1">
-              <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
-                {field.name}
-              </label>
+              {field.fieldType.toLowerCase() !== "html" && (
+                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
+                  {field.name}
+                </label>
+              )}
               <FieldEditor
                 field={field}
                 value={draftFields[field.referenceName] ?? null}
