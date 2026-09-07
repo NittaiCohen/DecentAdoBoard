@@ -494,7 +494,7 @@ function OverviewContent({
               }
             />
           )}
-          <div className="grid grid-cols-[200px_minmax(0,1fr)] items-end gap-x-4 gap-y-2">
+          <div className="grid grid-cols-[150px_minmax(0,1fr)] items-end gap-x-4 gap-y-2">
             {getHeaderFields(availableFields).map((field) => (
               <div key={field.referenceName} className="min-w-0 space-y-1">
                 <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
