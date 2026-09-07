@@ -4,6 +4,7 @@ import ActionableSidebar from "./components/ActionableSidebar";
 import HamburgerMenu from "./components/HamburgerMenu";
 import { MicrosoftLogin } from "./components/MicrosoftLogin";
 import ProjectSelector from "./components/ProjectSelector";
+import WorkItemOverview from "./components/WorkItemOverview";
 import { useBoardData } from "./hooks/useAdoData";
 import { setConfig, checkAuth, logout } from "./api/tauri";
 import { getSavedConfig, clearConfig } from "./utils/storage";
@@ -103,12 +104,18 @@ function BoardView({
   onToggleSidebar,
   onChangeProject,
   onSignOut,
+  onOpenWorkItem,
+  onCloseWorkItem,
+  openWorkItemId,
 }: {
   boardData?: BoardData;
   sidebarOpen: boolean;
   onToggleSidebar: () => void;
   onChangeProject: () => void;
   onSignOut: () => void;
+  onOpenWorkItem: (workItemId: number) => void;
+  onCloseWorkItem: () => void;
+  openWorkItemId: number | null;
 }) {
   const operationContextRef = useRef<OperationContext>(null);
   const { push: pushUndo, undo, redo } = useUndoRedo(operationContextRef);
@@ -127,11 +134,20 @@ function BoardView({
             pushUndo={pushUndo}
             undo={undo}
             redo={redo}
+            onOpenWorkItem={onOpenWorkItem}
           />
           <HamburgerMenu onChangeProject={onChangeProject} onSignOut={onSignOut} />
         </div>
-        <ActionableSidebar isOpen={sidebarOpen} onToggle={onToggleSidebar} boardData={boardData} />
+        <ActionableSidebar
+          isOpen={sidebarOpen}
+          onToggle={onToggleSidebar}
+          boardData={boardData}
+          onOpenOverview={onOpenWorkItem}
+        />
       </div>
+      {openWorkItemId !== null && (
+        <WorkItemOverview workItemId={openWorkItemId} onClose={onCloseWorkItem} />
+      )}
     </UndoRedoProvider>
   );
 }
@@ -139,6 +155,7 @@ function BoardView({
 function App() {
   const [step, setStep] = useState<AppStep>("pat");
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [openWorkItemId, setOpenWorkItemId] = useState<number | null>(null);
   const [loginError, setLoginError] = useState<string | null>(null);
   const restoring = useRestoreSession(setStep, true);
 
@@ -207,13 +224,20 @@ function App() {
       boardData={boardData}
       sidebarOpen={sidebarOpen}
       onToggleSidebar={() => setSidebarOpen(!sidebarOpen)}
-      onChangeProject={() => setStep("project")}
+      onChangeProject={() => {
+        setOpenWorkItemId(null);
+        setStep("project");
+      }}
       onSignOut={() => {
         void logout().finally(() => {
           clearConfig();
+          setOpenWorkItemId(null);
           setStep("pat");
         });
       }}
+      onOpenWorkItem={setOpenWorkItemId}
+      onCloseWorkItem={() => setOpenWorkItemId(null)}
+      openWorkItemId={openWorkItemId}
     />
   );
 }

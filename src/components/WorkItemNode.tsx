@@ -2,7 +2,9 @@ import { memo } from "react";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
 import type { WorkItem } from "../types";
 import { TYPE_COLORS, DEFAULT_TYPE_COLOR } from "../utils/workItemColors";
+import AssignedToDisplay from "./AssignedToDisplay";
 import StateDropdown from "./StateDropdown";
+import WorkItemTitleButton from "./WorkItemTitleButton";
 import type { BOARD_NODE_TYPES } from "../types/graph";
 
 export interface WorkItemNodeData extends Record<string, unknown> {
@@ -13,6 +15,7 @@ export interface WorkItemNodeData extends Record<string, unknown> {
   childCount: number;
   doneChildCount: number;
   onToggleExpand?: (id: number) => void;
+  onOpenOverview?: (id: number) => void;
 }
 
 export type WorkItemNode = Node<WorkItemNodeData, typeof BOARD_NODE_TYPES.workItem>;
@@ -45,7 +48,7 @@ function WorkItemHeader({ data }: { data: WorkItemNodeData }) {
 }
 
 function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
-  const { workItem, isActionable } = data;
+  const { workItem, isActionable, onOpenOverview } = data;
   const colorClass = TYPE_COLORS[workItem.type] ?? DEFAULT_TYPE_COLOR;
   const actionableRing = isActionable ? "ring-2 ring-green-500 dark:ring-green-400" : "";
 
@@ -66,18 +69,15 @@ function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
 
       <WorkItemHeader data={data} />
 
-      <p
-        className="text-xs text-gray-900 dark:text-gray-100 leading-tight line-clamp-2"
+      <WorkItemTitleButton
+        onOpen={() => onOpenOverview?.(workItem.id)}
         title={workItem.title}
+        className="block w-full text-left text-xs text-gray-900 dark:text-gray-100 leading-tight line-clamp-2 hover:underline"
       >
         {workItem.title}
-      </p>
+      </WorkItemTitleButton>
 
-      {workItem.assigned_to && (
-        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 truncate">
-          {workItem.assigned_to}
-        </p>
-      )}
+      <AssignedToDisplay value={workItem.assigned_to} />
     </div>
   );
 }

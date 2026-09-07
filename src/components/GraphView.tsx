@@ -44,6 +44,7 @@ interface GraphViewProps {
   pushUndo: (op: ReversibleOperation) => void;
   undo: () => void;
   redo: () => void;
+  onOpenWorkItem: (workItemId: number) => void;
 }
 
 const nodeTypes: NodeTypes = {
@@ -66,6 +67,7 @@ export default function GraphView({
   pushUndo,
   undo,
   redo,
+  onOpenWorkItem,
 }: GraphViewProps) {
   return (
     <ReactFlowProvider>
@@ -75,6 +77,7 @@ export default function GraphView({
         pushUndo={pushUndo}
         undo={undo}
         redo={redo}
+        onOpenWorkItem={onOpenWorkItem}
       />
     </ReactFlowProvider>
   );
@@ -89,7 +92,14 @@ const FIT_VIEW_ANIMATION_DURATION_MS = 300;
 const BACKGROUND_GRID_GAP = 16;
 const BACKGROUND_DOT_SIZE = 1;
 
-function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }: GraphViewProps) {
+function GraphViewInner({
+  boardData,
+  operationContextRef,
+  pushUndo,
+  undo,
+  redo,
+  onOpenWorkItem,
+}: GraphViewProps) {
   const [expandedParents, handleToggleExpand] = useExpandedParents(boardData);
   const { setViewport, getViewport, fitView } = useReactFlow();
   const queryClient = useQueryClient();
@@ -112,15 +122,21 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
     const result = buildGraphLayout(boardData, expandedParents);
 
     return {
-      nodes: result.nodes.map((n) => {
-        if (n.type === BOARD_NODE_TYPES.workItem || n.type === BOARD_NODE_TYPES.parentGroup) {
-          return { ...n, data: { ...n.data, onToggleExpand: handleToggleExpand } };
-        }
-        return n;
-      }),
+      nodes: result.nodes.map((node) =>
+        node.type === BOARD_NODE_TYPES.workItem || node.type === BOARD_NODE_TYPES.parentGroup
+          ? {
+              ...node,
+              data: {
+                ...node.data,
+                onToggleExpand: handleToggleExpand,
+                onOpenOverview: onOpenWorkItem,
+              },
+            }
+          : node,
+      ),
       edges: result.edges,
     };
-  }, [boardData, expandedParents, handleToggleExpand]);
+  }, [boardData, expandedParents, handleToggleExpand, onOpenWorkItem]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(layoutNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);
