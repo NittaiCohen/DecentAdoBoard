@@ -59,6 +59,21 @@ describe("buildGraphLayout edge cases", () => {
     expect(node?.position.y).toBeGreaterThanOrEqual(0);
   });
 
+  it("places epics before features and features before other work items", () => {
+    const result = buildGraphLayout(
+      board([
+        wi({ id: 1, type: "Task" }),
+        wi({ id: 2, type: "Feature" }),
+        wi({ id: 3, type: "Epic" }),
+      ]),
+      new Set(),
+    );
+    const nodesById = new Map(workItemNodes(result).map((node) => [node.id, node]));
+
+    expect(nodesById.get("wi-3")?.position.y).toBeLessThan(nodesById.get("wi-2")?.position.y ?? 0);
+    expect(nodesById.get("wi-2")?.position.y).toBeLessThan(nodesById.get("wi-1")?.position.y ?? 0);
+  });
+
   it("is deterministic across repeated runs", () => {
     const data = board([
       wi({ id: 1, successors: [2] }),

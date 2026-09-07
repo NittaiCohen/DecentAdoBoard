@@ -61,8 +61,17 @@ const MULTI_SPRINT_TYPES = new Set(["Epic", "Feature"]);
 const MIN_MULTI_SPRINT_PATHS = 2;
 const Y_EXTENT_MAX = 10000;
 const MIN_DIVIDER_HEIGHT_ROWS = 3;
+const WORK_ITEM_TYPE_ORDER: Record<string, number> = {
+  Epic: 0,
+  Feature: 1,
+};
+const DEFAULT_WORK_ITEM_TYPE_ORDER = 2;
 
 type NodeIdMap = Map<number, string>;
+
+function getWorkItemTypeOrder(workItem: WorkItem): number {
+  return WORK_ITEM_TYPE_ORDER[workItem.type] ?? DEFAULT_WORK_ITEM_TYPE_ORDER;
+}
 
 /** Resolve an array of work item IDs to their WorkItem objects, dropping any that aren't in the map. */
 function resolveWorkItemIds(ids: number[], workItemMap: Map<number, WorkItem>): WorkItem[] {
@@ -1276,6 +1285,11 @@ function layoutAllColumns(
     const items = plan.workItemsByColumn.get(effectiveColumn) ?? [];
 
     const sortedItems = [...items].sort((a, b) => {
+      const typeOrderDifference = getWorkItemTypeOrder(a) - getWorkItemTypeOrder(b);
+      if (typeOrderDifference !== 0) {
+        return typeOrderDifference;
+      }
+
       const aDone = ctx.doneStates.has(a.state) ? 1 : 0;
       const bDone = ctx.doneStates.has(b.state) ? 1 : 0;
       return aDone - bDone;
@@ -1490,11 +1504,21 @@ export function buildNodePositions(
       absY += current.position.y;
       current = current.parentId ? nodeById.get(current.parentId) : undefined;
     }
+
     const defaultWidth = node.type === BOARD_NODE_TYPES.workItem ? CHILD_WIDTH : SUB_COLUMN_WIDTH;
-    const width =
-      node.measured?.width ?? (node.style?.width ? Number(node.style.width) : defaultWidth);
-    const height =
-      node.measured?.height ?? (node.style?.height ? Number(node.style.height) : NODE_HEIGHT);
+    let width = defaultWidth;
+    if (node.style?.width !== undefined) {
+      width = Number(node.style.width);
+    } else if (node.measured?.width !== undefined) {
+      width = node.measured.width;
+    }
+
+    let height = NODE_HEIGHT;
+    if (node.style?.height !== undefined) {
+      height = Number(node.style.height);
+    } else if (node.measured?.height !== undefined) {
+      height = node.measured.height;
+    }
     const nodeType = isBoardNodeType(node.type) ? node.type : undefined;
     positions.set(node.id, { x: absX, y: absY, width, height, type: nodeType });
   });

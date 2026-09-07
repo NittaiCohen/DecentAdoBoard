@@ -7,6 +7,7 @@ import {
   ControlButton,
   Controls,
   type Edge,
+  type EdgeMouseHandler,
   type EdgeTypes,
   type Node,
   type NodeTypes,
@@ -26,7 +27,12 @@ import DragGhostComponent from "./DragGhost";
 import DependencyEdge from "./DependencyEdge";
 import DebugObstacles from "./DebugObstacles";
 import { BOARD_NODE_TYPES } from "../types/graph";
-import { buildGraphLayout, buildNodePositions } from "../utils/graphLayout";
+import {
+  buildGraphLayout,
+  buildNodePositions,
+  NODE_GAP_Y,
+  NODE_HEIGHT,
+} from "../utils/graphLayout";
 import { assignLaneOffsets } from "../utils/edgeRouting";
 import { wouldCreateCycle } from "../utils/dependencies";
 import { useDragReorder } from "../hooks/useDragReorder";
@@ -59,7 +65,167 @@ const edgeTypes: EdgeTypes = {
 };
 
 /** Set to true to draw red obstacle rectangles on the graph. */
-const DEBUG_SHOW_OBSTACLES = false;
+const DEBUG_MODE = false;
+const DEBUG_SHOW_OBSTACLES = DEBUG_MODE;
+const DEFAULT_COLLISION_NODE_WIDTH = 220;
+const DEFAULT_COLLISION_NODE_HEIGHT = NODE_HEIGHT;
+const COLLISION_GROUP_PADDING = 20;
+
+const COLLISION_NODE_TYPES = new Set<string>([
+  BOARD_NODE_TYPES.workItem,
+  BOARD_NODE_TYPES.parentGroup,
+]);
+
+function getNodeDimension(node: Node, dimension: "width" | "height"): number {
+  const styledDimension = node.style?.[dimension];
+  if (typeof styledDimension === "number") {
+    return styledDimension;
+  }
+  if (typeof styledDimension === "string") {
+    const parsedDimension = Number(styledDimension);
+    if (!Number.isNaN(parsedDimension)) {
+      return parsedDimension;
+    }
+  }
+
+  const measuredDimension = node.measured?.[dimension];
+  if (measuredDimension !== undefined) {
+    return measuredDimension;
+  }
+
+  return dimension === "width" ? DEFAULT_COLLISION_NODE_WIDTH : DEFAULT_COLLISION_NODE_HEIGHT;
+}
+
+function buildNodeDepthMap(nodes: Node[]): Map<string, number> {
+  const nodesById = new Map(nodes.map((node) => [node.id, node]));
+  const nodeDepths = new Map<string, number>();
+  const visitingNodeIds = new Set<string>();
+
+  const getNodeDepth = (nodeId: string): number => {
+    const cachedDepth = nodeDepths.get(nodeId);
+    if (cachedDepth !== undefined) {
+      return cachedDepth;
+    }
+
+    if (visitingNodeIds.has(nodeId)) {
+      throw new Error(`Cycle detected in node parent hierarchy at "${nodeId}".`);
+    }
+
+    const node = nodesById.get(nodeId);
+    if (!node?.parentId || !nodesById.has(node.parentId)) {
+      nodeDepths.set(nodeId, 0);
+      return 0;
+    }
+
+    visitingNodeIds.add(nodeId);
+    const depth = getNodeDepth(node.parentId) + 1;
+    visitingNodeIds.delete(nodeId);
+    nodeDepths.set(nodeId, depth);
+    return depth;
+  };
+
+  nodes.forEach((node) => getNodeDepth(node.id));
+
+  return nodeDepths;
+}
+
+function resolveSiblingOverlaps(siblings: Node[], updatedNodes: Map<string, Node>): number {
+  const updatedSiblings = siblings
+    .map((node) => updatedNodes.get(node.id) ?? node)
+    .sort((first, second) => {
+      if (first.position.y !== second.position.y) {
+        return first.position.y - second.position.y;
+      }
+      return first.position.x - second.position.x;
+    });
+
+  let maxBottom = 0;
+  for (let index = 0; index < updatedSiblings.length; index++) {
+    const node = updatedSiblings[index];
+    let resolvedY = node.position.y;
+    const nodeWidth = getNodeDimension(node, "width");
+    const nodeHeight = getNodeDimension(node, "height");
+
+    for (let previousIndex = 0; previousIndex < index; previousIndex++) {
+      const previousNode = updatedSiblings[previousIndex];
+      const previousWidth = getNodeDimension(previousNode, "width");
+      const previousHeight = getNodeDimension(previousNode, "height");
+      const overlapsHorizontally =
+        node.position.x < previousNode.position.x + previousWidth &&
+        node.position.x + nodeWidth > previousNode.position.x;
+
+      if (overlapsHorizontally) {
+        resolvedY = Math.max(resolvedY, previousNode.position.y + previousHeight + NODE_GAP_Y);
+      }
+    }
+
+    if (resolvedY !== node.position.y) {
+      const updatedNode = {
+        ...node,
+        position: { ...node.position, y: resolvedY },
+      };
+      updatedNodes.set(node.id, updatedNode);
+      updatedSiblings[index] = updatedNode;
+    }
+
+    maxBottom = Math.max(maxBottom, resolvedY + nodeHeight);
+  }
+
+  return maxBottom;
+}
+
+function resolveNodeOverlaps(nodes: Node[]): Node[] {
+  const nodeDepths = buildNodeDepthMap(nodes);
+  const nodesByParent = new Map<string | undefined, Node[]>();
+  nodes
+    .filter((node) => node.type !== undefined && COLLISION_NODE_TYPES.has(node.type))
+    .forEach((node) => {
+      const siblings = nodesByParent.get(node.parentId);
+      if (siblings) {
+        siblings.push(node);
+      } else {
+        nodesByParent.set(node.parentId, [node]);
+      }
+    });
+
+  const updatedNodes = new Map(nodes.map((node) => [node.id, node]));
+  const parentGroups = nodes
+    .filter((node) => node.type === BOARD_NODE_TYPES.parentGroup)
+    .sort((first, second) => {
+      const firstDepth = nodeDepths.get(first.id) ?? 0;
+      const secondDepth = nodeDepths.get(second.id) ?? 0;
+      return secondDepth - firstDepth;
+    });
+
+  for (const group of parentGroups) {
+    const children = nodesByParent.get(group.id) ?? [];
+    const maxChildBottom = resolveSiblingOverlaps(children, updatedNodes);
+
+    const currentHeight = getNodeDimension(group, "height");
+    const requiredHeight = maxChildBottom + COLLISION_GROUP_PADDING;
+    if (requiredHeight > currentHeight) {
+      const updatedGroup = {
+        ...group,
+        style: { ...group.style, height: requiredHeight },
+        data:
+          group.data && typeof group.data === "object"
+            ? { ...group.data, height: requiredHeight }
+            : group.data,
+      };
+      updatedNodes.set(group.id, updatedGroup);
+    }
+  }
+
+  for (const [parentId, siblings] of nodesByParent) {
+    if (parentId !== undefined) {
+      continue;
+    }
+
+    resolveSiblingOverlaps(siblings, updatedNodes);
+  }
+
+  return nodes.map((node) => updatedNodes.get(node.id) ?? node);
+}
 
 export default function GraphView({
   boardData,
@@ -156,14 +322,25 @@ function GraphViewInner({
     if (routedLayoutRef.current === layoutNodes) {
       return;
     }
-    const allMeasured = nodes.length > 0 && nodes.every((n) => n.measured?.width !== undefined);
+    const measuredNodes = nodes.filter(
+      (node) => node.type !== undefined && COLLISION_NODE_TYPES.has(node.type),
+    );
+    const allMeasured =
+      measuredNodes.length > 0 &&
+      measuredNodes.every(
+        (node) => node.measured?.height !== undefined || node.style?.height !== undefined,
+      );
     if (!allMeasured) {
       return;
     }
     routedLayoutRef.current = layoutNodes;
-    const { positions: nodePositions, parentMap } = buildNodePositions(nodes);
+    const reflowedNodes = resolveNodeOverlaps(nodes);
+    if (reflowedNodes.some((node, index) => node !== nodes[index])) {
+      setNodes(reflowedNodes);
+    }
+    const { positions: nodePositions, parentMap } = buildNodePositions(reflowedNodes);
     setEdges((prev) => assignLaneOffsets(prev, nodePositions, parentMap));
-  }, [nodes, layoutNodes, setEdges]);
+  }, [nodes, layoutNodes, setEdges, setNodes]);
 
   const handleDragSettled = useCallback(
     (finalNodes: Node[]) => {
@@ -228,6 +405,27 @@ function GraphViewInner({
     },
     [wiMap, pushUndo, operationContextRef],
   );
+
+  const handleEdgeClick = useCallback<EdgeMouseHandler>((event, edge) => {
+    if (!DEBUG_MODE || edge.type !== "dependency") {
+      return;
+    }
+
+    // React Flow's interaction path receives edge clicks, so log from its edge event.
+    // eslint-disable-next-line no-console
+    console.log("[GraphView] dependency edge clicked", {
+      event: {
+        clientX: event.clientX,
+        clientY: event.clientY,
+      },
+      edgeId: edge.id,
+      source: edge.source,
+      target: edge.target,
+      sourceHandle: edge.sourceHandle,
+      targetHandle: edge.targetHandle,
+      data: edge.data,
+    });
+  }, []);
 
   const handleEdgesDelete = useCallback(
     (deletedEdges: Edge[]) => {
@@ -353,6 +551,7 @@ function GraphViewInner({
         onNodeDrag={handleNodeDrag}
         onNodeDragStop={handleNodeDragStop}
         onConnect={handleConnect}
+        onEdgeClick={handleEdgeClick}
         onEdgesDelete={handleEdgesDelete}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}

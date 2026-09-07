@@ -54,7 +54,7 @@ function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
 
   return (
     <div
-      className={`rounded-lg border-l-4 px-3 py-2 min-w-[180px] max-w-[220px] shadow-md ${colorClass} ${actionableRing}`}
+      className={`flex min-h-[80px] min-w-[180px] max-w-[220px] flex-col overflow-hidden rounded-lg border-l-4 px-3 py-2 shadow-md ${colorClass} ${actionableRing}`}
     >
       <Handle
         type="target"
@@ -67,17 +67,21 @@ function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
         className="!bg-gray-500 dark:!bg-gray-400 !w-2 !h-2"
       />
 
-      <WorkItemHeader data={data} />
+      <div className="shrink-0">
+        <WorkItemHeader data={data} />
+      </div>
 
       <WorkItemTitleButton
         onOpen={() => onOpenOverview?.(workItem.id)}
         title={workItem.title}
-        className="block w-full text-left text-xs text-gray-900 dark:text-gray-100 leading-tight line-clamp-2 hover:underline"
+        className="min-h-0 flex-1 overflow-hidden text-left text-xs leading-tight text-gray-900 hover:underline dark:text-gray-100 line-clamp-10"
       >
         {workItem.title}
       </WorkItemTitleButton>
 
-      <AssignedToDisplay value={workItem.assigned_to} />
+      <div className="shrink-0">
+        <AssignedToDisplay value={workItem.assigned_to} />
+      </div>
     </div>
   );
 }
