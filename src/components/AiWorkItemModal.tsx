@@ -168,6 +168,17 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
     onClose();
   }, [onClose]);
 
+  const loadContext = useCallback(() => {
+    setIsContextLoading(true);
+    setError(null);
+    void getAiPlannerContext()
+      .then(setContext)
+      .catch((contextError: unknown) => {
+        setError(String(contextError));
+      })
+      .finally(() => setIsContextLoading(false));
+  }, []);
+
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -184,22 +195,15 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
     setExistingAdoIds({});
     setSubmissionId(globalThis.crypto.randomUUID());
     setIsSubmissionLocked(false);
-    setError(null);
-    setIsContextLoading(true);
     document.body.style.overflow = "hidden";
     requestAnimationFrame(() => missionInputRef.current?.focus());
-    void getAiPlannerContext()
-      .then(setContext)
-      .catch((contextError: unknown) => {
-        setError(String(contextError));
-      })
-      .finally(() => setIsContextLoading(false));
+    loadContext();
 
     return () => {
       document.body.style.overflow = "";
       previousActiveElementRef.current?.focus();
     };
-  }, [isOpen]);
+  }, [isOpen, loadContext]);
 
   if (!isOpen) {
     return null;
@@ -375,6 +379,14 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
                 >
                   <p className="font-semibold">{"AI is not available"}</p>
                   <p className="mt-1">{context.aiError}</p>
+                  <button
+                    type="button"
+                    onClick={loadContext}
+                    disabled={isContextLoading}
+                    className="mt-3 rounded-lg border border-amber-400 bg-white px-3 py-1.5 text-sm font-medium text-amber-900 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200 dark:hover:bg-amber-900/70"
+                  >
+                    {isContextLoading ? "Checking..." : "Check again"}
+                  </button>
                 </div>
               )}
               <label className="mt-5 block text-sm font-medium text-gray-700 dark:text-gray-300">

@@ -227,13 +227,31 @@ describe("AiWorkItemModal", () => {
       ...mockContext,
       aiProvider: null,
       aiReady: false,
-      aiError: "Foundry Local is not running. Start it with: foundry service start",
+      aiError: "Foundry Local is not running. Start it with: foundry server start",
     });
     renderModal();
 
     expect(await screen.findByText("AI is not available")).toBeTruthy();
-    expect(screen.getByText(/foundry service start/)).toBeTruthy();
+    expect(screen.getByText(/foundry server start/)).toBeTruthy();
     expect(screen.getByText("Generate preview")).toHaveProperty("disabled", true);
+  });
+
+  it("re-checks availability without reopening the modal", async () => {
+    mocks.getAiPlannerContext.mockResolvedValueOnce({
+      ...mockContext,
+      aiProvider: null,
+      aiReady: false,
+      aiError: "Foundry Local is installed but not running.",
+    });
+    mocks.getAiPlannerContext.mockResolvedValue(mockContext);
+    renderModal();
+
+    fireEvent.click(await screen.findByText("Check again"));
+
+    await waitFor(() => {
+      expect(screen.queryByText("AI is not available")).toBeNull();
+    });
+    expect(screen.getByText("Generate preview")).toHaveProperty("disabled", false);
   });
 
   it("closes when Escape is pressed", async () => {

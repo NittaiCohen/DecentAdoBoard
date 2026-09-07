@@ -25,6 +25,30 @@ fn parse_endpoint_from_status(output: &str) -> Option<String> {
     })
 }
 
+/// `foundry server status` exits 0 in every state, including when the server is stopped, so
+/// the state must be read from stdout rather than inferred from the exit code.
+#[derive(Debug, PartialEq)]
+enum ServerStatus {
+    Running(String),
+    Initializing,
+    NotRunning,
+    Unrecognized,
+}
+
+fn parse_server_status(output: &str) -> ServerStatus {
+    if let Some(endpoint) = parse_endpoint_from_status(output) {
+        return ServerStatus::Running(endpoint);
+    }
+    let lowercased = output.to_lowercase();
+    if lowercased.contains("initializing") || lowercased.contains("starting") {
+        ServerStatus::Initializing
+    } else if lowercased.contains("not running") || lowercased.contains("stopped") {
+        ServerStatus::NotRunning
+    } else {
+        ServerStatus::Unrecognized
+    }
+}
+
 /// `foundry server status` reports a bare origin while the SDKs report a `/v1` suffix.
 /// Both are normalized to a bare origin so callers can append a versioned path safely.
 fn normalize_base_url(endpoint: &str) -> String {
@@ -161,10 +185,23 @@ async fn discover_base_url() -> Result<String, String> {
     }
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    parse_endpoint_from_status(&stdout)
-        .as_deref()
-        .map(normalize_base_url)
-        .ok_or_else(|| "Foundry Local did not report a service endpoint".to_string())
+    match parse_server_status(&stdout) {
+        ServerStatus::Running(endpoint) => Ok(normalize_base_url(&endpoint)),
+        ServerStatus::Initializing => Err(
+            "Foundry Local is still starting up. The first start downloads hardware acceleration \
+             components, which can take several minutes. Try again shortly — you can watch \
+             progress with: foundry server logs -f"
+                .to_string(),
+        ),
+        ServerStatus::NotRunning => Err(
+            "Foundry Local is installed but not running. Start it with: foundry server start"
+                .to_string(),
+        ),
+        ServerStatus::Unrecognized => Err(format!(
+            "Foundry Local did not report a service endpoint. 'foundry server status' said: {}",
+            stdout.trim()
+        )),
+    }
 }
 
 async fn list_models(http_client: &reqwest::Client, base_url: &str) -> Result<Vec<String>, String> {
@@ -297,6 +334,27 @@ mod tests {
         assert_eq!(
             find_matching_model(&available, "gpt-4.1").as_deref(),
             Some("gpt-4.1-cuda-gpu")
+        );
+    }
+
+    #[test]
+    fn recognizes_real_server_states() {
+        // Captured from Foundry Local CLI 0.10.3, which exits 0 in every one of these states.
+        assert_eq!(
+            parse_server_status("\u{25a0} note: Server is not running.\n"),
+            ServerStatus::NotRunning
+        );
+        assert_eq!(
+            parse_server_status("State Initializing\n"),
+            ServerStatus::Initializing
+        );
+        assert_eq!(
+            parse_server_status("State Running\nEndpoint http://localhost:52701/v1\n"),
+            ServerStatus::Running("http://localhost:52701/v1".to_string())
+        );
+        assert_eq!(
+            parse_server_status("something unexpected"),
+            ServerStatus::Unrecognized
         );
     }
 
