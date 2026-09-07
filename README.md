@@ -70,13 +70,30 @@ assignments are needed.
 
 ```powershell
 winget install Microsoft.FoundryLocal
-foundry model download phi-4
 foundry server start
+foundry model download phi-4-mini
 npm run tauri dev
 ```
 
-The service port is assigned dynamically, so the app discovers the endpoint through
-`foundry server status` rather than assuming a fixed port.
+Expect the first `foundry server start` to take a long time — it downloads hardware acceleration
+components (CUDA, WebGPU, OpenVINO, TensorRT) before the server becomes usable, which took about
+25 minutes on a Microsoft laptop. Providers your machine cannot use, such as CUDA without an
+NVIDIA GPU, fail individually and are skipped; that is expected and not an error.
+
+Check readiness at any time:
+
+```powershell
+foundry server status   # "State Ready" plus a "Web URLs" endpoint means it is usable
+foundry server logs -f  # follow download and startup progress
+```
+
+Note that `foundry server status` exits successfully even when the server is stopped, so read the
+reported state rather than the exit code. The service port is assigned dynamically, so the app
+discovers the endpoint from this command rather than assuming a fixed port.
+
+`phi-4-mini` (2.2 GB) is the recommended starting point. Larger models such as `phi-4` (8.8 GB)
+produce better plans but are slow without a supported GPU. List the options with
+`foundry model list --type chat`.
 
 #### Option 2: Azure OpenAI (better plan quality)
 
@@ -98,8 +115,8 @@ frontend or repository.
 
 ```powershell
 $env:DECENT_ADO_BOARD_AI_PROVIDER = "foundry-local"   # or "azure-openai" to force one backend
-$env:DECENT_ADO_BOARD_FOUNDRY_LOCAL_ENDPOINT = "http://localhost:52701"
-$env:DECENT_ADO_BOARD_FOUNDRY_LOCAL_MODEL = "phi-4"
+$env:DECENT_ADO_BOARD_FOUNDRY_LOCAL_ENDPOINT = "http://127.0.0.1:58372"
+$env:DECENT_ADO_BOARD_FOUNDRY_LOCAL_MODEL = "phi-4-mini"
 ```
 
 If no backend is available, the rest of the board keeps working and the AI Planner explains what
