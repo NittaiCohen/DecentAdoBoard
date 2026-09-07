@@ -7,8 +7,14 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 pub const CLIENT_ID: &str = "ce5adad2-f8f2-4a19-b494-422225cf1d25";
 const TENANT_ID: &str = "72f988bf-86f1-41af-91ab-2d7cd011db47";
-const AUTH_URL: &str = formatcp!("https://login.microsoftonline.com/{}/oauth2/v2.0/authorize", TENANT_ID);
-const TOKEN_URL: &str = formatcp!("https://login.microsoftonline.com/{}/oauth2/v2.0/token", TENANT_ID);
+const AUTH_URL: &str = formatcp!(
+    "https://login.microsoftonline.com/{}/oauth2/v2.0/authorize",
+    TENANT_ID
+);
+const TOKEN_URL: &str = formatcp!(
+    "https://login.microsoftonline.com/{}/oauth2/v2.0/token",
+    TENANT_ID
+);
 const ADO_SCOPE: &str = "499b84ac-1321-427f-aa17-267ca6975798/user_impersonation offline_access";
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(300);
 
@@ -40,16 +46,23 @@ pub fn pat_tokens(pat: String) -> OAuthTokens {
 
 const ADO_RESOURCE_ID: &str = "499b84ac-1321-427f-aa17-267ca6975798";
 
-pub async fn get_az_cli_token() -> Result<OAuthTokens, String> {
+async fn get_az_cli_token_response(resource: &str) -> Result<serde_json::Value, String> {
     // On Windows, az is a .cmd file and must be invoked via cmd.exe.
     #[cfg(windows)]
     let output = tokio::process::Command::new("cmd")
-        .args(["/c", "az", "account", "get-access-token", "--resource", ADO_RESOURCE_ID])
+        .args([
+            "/c",
+            "az",
+            "account",
+            "get-access-token",
+            "--resource",
+            resource,
+        ])
         .output()
         .await;
     #[cfg(not(windows))]
     let output = tokio::process::Command::new("az")
-        .args(["account", "get-access-token", "--resource", ADO_RESOURCE_ID])
+        .args(["account", "get-access-token", "--resource", resource])
         .output()
         .await;
 
@@ -59,13 +72,23 @@ pub async fn get_az_cli_token() -> Result<OAuthTokens, String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "az CLI error (run 'az login' first): {stderr}"
-        ));
+        return Err(format!("az CLI error (run 'az login' first): {stderr}"));
     }
 
-    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse az CLI output: {e}"))?;
+    serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse az CLI output: {e}"))
+}
+
+pub async fn get_az_cli_resource_access_token(resource: &str) -> Result<String, String> {
+    let json = get_az_cli_token_response(resource).await?;
+    json["accessToken"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| "No accessToken in az CLI output".to_string())
+}
+
+pub async fn get_az_cli_token() -> Result<OAuthTokens, String> {
+    let json = get_az_cli_token_response(ADO_RESOURCE_ID).await?;
 
     let access_token = json["accessToken"]
         .as_str()
@@ -181,7 +204,11 @@ fn parse_query_string(query: &str) -> HashMap<String, String> {
             let mut kv = param.splitn(2, '=');
             let key = kv.next()?;
             let value = kv.next().unwrap_or_default();
-            let decode = |s| urlencoding::decode(s).map(|c| c.into_owned()).unwrap_or_else(|_| s.to_owned());
+            let decode = |s| {
+                urlencoding::decode(s)
+                    .map(|c| c.into_owned())
+                    .unwrap_or_else(|_| s.to_owned())
+            };
             Some((decode(key), decode(value)))
         })
         .collect()
@@ -268,11 +295,10 @@ fn success_response() -> String {
 }
 
 fn error_response(message: &str) -> String {
-    let body = include_str!("auth_error.html")
-        .replace("{message}", &html_escape::encode_text(message));
+    let body =
+        include_str!("auth_error.html").replace("{message}", &html_escape::encode_text(message));
     http_response(400, "Bad Request", &body)
 }
-
 
 #[cfg(test)]
 mod tests {

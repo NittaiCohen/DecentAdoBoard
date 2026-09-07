@@ -23,7 +23,10 @@ function createPreviewIterations(workItems: WorkItem[]): Iteration[] {
   }));
 }
 
-export function createGeneratedPlanPreview(plan: GeneratedWorkItemPlan): GeneratedPlanPreview {
+export function createGeneratedPlanPreview(
+  plan: GeneratedWorkItemPlan,
+  availableIterations?: Iteration[],
+): GeneratedPlanPreview {
   const previewIdByTemporaryId = new Map<string, number>();
   const temporaryIdByPreviewId = new Map<number, string>();
 
@@ -93,7 +96,10 @@ export function createGeneratedPlanPreview(plan: GeneratedWorkItemPlan): Generat
   return {
     boardData: {
       work_items: workItems,
-      iterations: createPreviewIterations(workItems),
+      iterations:
+        availableIterations && availableIterations.length > 0
+          ? availableIterations
+          : createPreviewIterations(workItems),
     },
     temporaryIdByPreviewId,
   };

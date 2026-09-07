@@ -10,6 +10,15 @@ export {
   type WorkItemTypeState,
 } from "./ado";
 
-export { type GeneratedWorkItem, type GeneratedWorkItemPlan } from "./ai";
+export {
+  type AiPlannerContext,
+  type AiWorkItemTypeMetadata,
+  type CreatedWorkItem,
+  type GeneratedWorkItem,
+  type GeneratedWorkItemPlan,
+  type GenerateWorkItemPlanRequest,
+  type SubmitWorkItemPlanRequest,
+  type SubmitWorkItemPlanResult,
+} from "./ai";
 
 export { type RequiredSome, type Point } from "./utils";

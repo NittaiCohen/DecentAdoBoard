@@ -58,6 +58,24 @@ Start the Tauri development app:
 npm run tauri dev
 ```
 
+### Configure Azure OpenAI
+
+The AI Planner uses Microsoft Entra authentication through the Azure CLI. The signed-in identity
+must have access to an Azure OpenAI or Azure AI Foundry model deployment and the
+`Cognitive Services OpenAI User` role on the resource.
+
+Set these environment variables before starting the app:
+
+```powershell
+$env:DECENT_ADO_BOARD_AZURE_OPENAI_ENDPOINT = "https://<resource-name>.openai.azure.com"
+$env:DECENT_ADO_BOARD_AZURE_OPENAI_DEPLOYMENT = "<deployment-name>"
+$env:DECENT_ADO_BOARD_AZURE_OPENAI_API_VERSION = "2024-10-21" # Optional
+npm run tauri dev
+```
+
+The app obtains a separate Azure OpenAI access token from `az`. No API key is stored in the
+frontend or repository.
+
 After signing in, select an Azure DevOps organization, project, and area path. The app then loads the board data for that selection.
 
 ## Useful commands

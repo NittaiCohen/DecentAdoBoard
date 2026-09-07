@@ -12,11 +12,9 @@ import type { BoardData } from "./types";
 import { useUndoRedo } from "./hooks/useUndoRedo";
 import { UndoRedoProvider } from "./contexts/UndoRedoContext";
 import type { OperationContext } from "./utils/reversibleOperations";
-import { findCurrentIterationPath } from "./utils/iterations";
 import "./App.css";
 
 type AppStep = "pat" | "project" | "board";
-const CURRENT_USER_NAME = "Shoham Amar";
 
 function FullScreenMessage({ children }: { children: React.ReactNode }) {
   return (
@@ -120,10 +118,6 @@ function BoardView({
     () => ({ push: pushUndo, operationContextRef }),
     [pushUndo, operationContextRef],
   );
-  const currentIterationPath = useMemo(
-    () => findCurrentIterationPath(boardData?.iterations ?? []),
-    [boardData?.iterations],
-  );
 
   return (
     <UndoRedoProvider value={contextValue}>
@@ -151,12 +145,7 @@ function BoardView({
             </span>
             {"AI Planner"}
           </button>
-          <AiWorkItemModal
-            isOpen={isAiPlannerOpen}
-            onClose={() => setIsAiPlannerOpen(false)}
-            defaultAssignedTo={CURRENT_USER_NAME}
-            defaultIterationPath={currentIterationPath}
-          />
+          <AiWorkItemModal isOpen={isAiPlannerOpen} onClose={() => setIsAiPlannerOpen(false)} />
         </div>
         <ActionableSidebar isOpen={sidebarOpen} onToggle={onToggleSidebar} boardData={boardData} />
       </div>

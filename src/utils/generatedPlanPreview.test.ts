@@ -1,24 +1,63 @@
 import { describe, expect, it } from "vitest";
-import { createMockAiPlan } from "./mockAiPlan";
+import type { GeneratedWorkItemPlan } from "../types";
 import { createGeneratedPlanPreview } from "./generatedPlanPreview";
+
+function generatedPlan(): GeneratedWorkItemPlan {
+  return {
+    mission: "Create an AI planner",
+    items: [
+      {
+        temporaryId: "story-1",
+        parentTemporaryId: null,
+        type: "User Story",
+        state: "Proposed",
+        title: "Implement the primary flow",
+        description: "",
+        acceptanceCriteria: "",
+        iterationPath: "Project\\Current",
+        assignedTo: "Shoham Amar",
+        dependencyTemporaryIds: [],
+      },
+      {
+        temporaryId: "task-1",
+        parentTemporaryId: "story-1",
+        type: "Task",
+        state: "Proposed",
+        title: "Build and validate the implementation",
+        description: "",
+        acceptanceCriteria: "",
+        iterationPath: "Project\\Current",
+        assignedTo: "Shoham Amar",
+        dependencyTemporaryIds: [],
+      },
+      {
+        temporaryId: "task-2",
+        parentTemporaryId: "story-1",
+        type: "Task",
+        state: "Proposed",
+        title: "Review the implementation",
+        description: "",
+        acceptanceCriteria: "",
+        iterationPath: "Project\\Current",
+        assignedTo: "Shoham Amar",
+        dependencyTemporaryIds: ["task-1"],
+      },
+    ],
+  };
+}
 
 describe("createGeneratedPlanPreview", () => {
   it("maps temporary IDs to negative preview IDs without creating ADO IDs", () => {
-    const preview = createGeneratedPlanPreview(
-      createMockAiPlan("Create an AI planner", undefined, {
-        assignedTo: "Shoham Amar",
-        iterationPath: "Project\\Current",
-      }),
-    );
+    const preview = createGeneratedPlanPreview(generatedPlan());
 
     expect(preview.boardData.work_items.every((workItem) => workItem.id < 0)).toBe(true);
-    expect(preview.temporaryIdByPreviewId.get(-1)).toBe("epic-1");
+    expect(preview.temporaryIdByPreviewId.get(-1)).toBe("story-1");
     expect(preview.boardData.work_items[0]?.assigned_to).toBe("Shoham Amar");
     expect(preview.boardData.work_items[0]?.iteration_path).toBe("Project\\Current");
   });
 
   it("maps parent and dependency relationships into board data", () => {
-    const preview = createGeneratedPlanPreview(createMockAiPlan("Create an AI planner"));
+    const preview = createGeneratedPlanPreview(generatedPlan());
     const story = preview.boardData.work_items.find((workItem) =>
       workItem.title.includes("primary"),
     );

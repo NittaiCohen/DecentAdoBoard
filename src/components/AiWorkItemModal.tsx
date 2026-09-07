@@ -7,44 +7,47 @@ import {
   type Dispatch,
   type SetStateAction,
 } from "react";
-import type { GeneratedWorkItemPlan } from "../types";
+import { useQueryClient } from "@tanstack/react-query";
+import type { AiPlannerContext, GeneratedWorkItemPlan, SubmitWorkItemPlanResult } from "../types";
+import { generateWorkItemPlan, getAiPlannerContext, submitWorkItemPlan } from "../api/tauri";
 import { createGeneratedPlanPreview } from "../utils/generatedPlanPreview";
-import { createMockAiPlan } from "../utils/mockAiPlan";
 import GraphView, { type GraphPreviewActions } from "./GraphView";
 
-type ModalStep = "describe" | "generating" | "preview" | "submitting" | "success";
+type ModalStep =
+  | "describe"
+  | "generating"
+  | "preview"
+  | "confirm"
+  | "submitting"
+  | "failure"
+  | "success";
 
 interface AiWorkItemModalProps {
   isOpen: boolean;
   onClose: () => void;
-  mockDelayMs?: number;
-  defaultAssignedTo?: string;
-  defaultIterationPath?: string;
 }
-
-const DEFAULT_MOCK_DELAY_MS = 700;
-const DEFAULT_ITERATION_PATH = "Current sprint";
 
 function LoadingIndicator({ message }: { message: string }) {
   return (
     <div className="flex min-h-72 flex-col items-center justify-center text-center">
       <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600 dark:border-blue-900 dark:border-t-blue-400" />
       <p className="font-medium text-gray-800 dark:text-gray-100">{message}</p>
-      <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        {"This is simulated in the first UI milestone."}
-      </p>
     </div>
   );
 }
 
 function usePreviewActions(
   plan: GeneratedWorkItemPlan | null,
+  context: AiPlannerContext | null,
   setPlan: Dispatch<SetStateAction<GeneratedWorkItemPlan | null>>,
 ): {
   preview: ReturnType<typeof createGeneratedPlanPreview> | null;
   previewActions: GraphPreviewActions | undefined;
 } {
-  const preview = useMemo(() => (plan ? createGeneratedPlanPreview(plan) : null), [plan]);
+  const preview = useMemo(
+    () => (plan ? createGeneratedPlanPreview(plan, context?.iterations) : null),
+    [context?.iterations, plan],
+  );
 
   const previewActions = useMemo<GraphPreviewActions | undefined>(() => {
     if (!preview) {
@@ -143,35 +146,27 @@ function usePreviewActions(
   return { preview, previewActions };
 }
 
-export default function AiWorkItemModal({
-  isOpen,
-  onClose,
-  mockDelayMs = DEFAULT_MOCK_DELAY_MS,
-  defaultAssignedTo = "",
-  defaultIterationPath = DEFAULT_ITERATION_PATH,
-}: AiWorkItemModalProps) {
+export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProps) {
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<ModalStep>("describe");
   const [mission, setMission] = useState("");
   const [refinementRequest, setRefinementRequest] = useState("");
   const [plan, setPlan] = useState<GeneratedWorkItemPlan | null>(null);
+  const [context, setContext] = useState<AiPlannerContext | null>(null);
+  const [isContextLoading, setIsContextLoading] = useState(false);
+  const [submissionResult, setSubmissionResult] = useState<SubmitWorkItemPlanResult | null>(null);
+  const [existingAdoIds, setExistingAdoIds] = useState<Record<string, number>>({});
+  const [submissionId, setSubmissionId] = useState("");
+  const [isSubmissionLocked, setIsSubmissionLocked] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const missionInputRef = useRef<HTMLTextAreaElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const previousActiveElementRef = useRef<HTMLElement | null>(null);
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { preview, previewActions } = usePreviewActions(plan, setPlan);
-
-  const clearPendingTimeout = useCallback(() => {
-    if (timeoutRef.current !== null) {
-      clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    }
-  }, []);
+  const { preview, previewActions } = usePreviewActions(plan, context, setPlan);
 
   const closeModal = useCallback(() => {
-    clearPendingTimeout();
     onClose();
-  }, [clearPendingTimeout, onClose]);
+  }, [onClose]);
 
   useEffect(() => {
     if (!isOpen) {
@@ -184,37 +179,33 @@ export default function AiWorkItemModal({
     setMission("");
     setRefinementRequest("");
     setPlan(null);
+    setContext(null);
+    setSubmissionResult(null);
+    setExistingAdoIds({});
+    setSubmissionId(globalThis.crypto.randomUUID());
+    setIsSubmissionLocked(false);
     setError(null);
+    setIsContextLoading(true);
     document.body.style.overflow = "hidden";
     requestAnimationFrame(() => missionInputRef.current?.focus());
+    void getAiPlannerContext()
+      .then(setContext)
+      .catch((contextError: unknown) => {
+        setError(String(contextError));
+      })
+      .finally(() => setIsContextLoading(false));
 
     return () => {
-      clearPendingTimeout();
       document.body.style.overflow = "";
       previousActiveElementRef.current?.focus();
     };
-  }, [isOpen, clearPendingTimeout]);
+  }, [isOpen]);
 
   if (!isOpen) {
     return null;
   }
 
-  function scheduleMockAction(action: () => void) {
-    clearPendingTimeout();
-    timeoutRef.current = setTimeout(() => {
-      timeoutRef.current = null;
-      action();
-    }, mockDelayMs);
-  }
-
-  function createPlan(refinement?: string) {
-    return createMockAiPlan(mission, refinement, {
-      assignedTo: defaultAssignedTo,
-      iterationPath: defaultIterationPath,
-    });
-  }
-
-  function handleGenerate() {
+  async function handleGenerate() {
     if (!mission.trim()) {
       setError("Describe the mission before generating work items.");
       missionInputRef.current?.focus();
@@ -222,36 +213,76 @@ export default function AiWorkItemModal({
     }
     setError(null);
     setStep("generating");
-    scheduleMockAction(() => {
-      setPlan(createPlan());
+    try {
+      const generatedPlan = await generateWorkItemPlan({ mission });
+      setPlan(generatedPlan);
       setStep("preview");
-    });
+    } catch (generationError) {
+      setError(String(generationError));
+      setStep("describe");
+    }
   }
 
-  function handleRegenerate() {
+  async function handleRegenerate() {
     if (!refinementRequest.trim()) {
       setError("Describe the changes you want the AI to make.");
       return;
     }
     setError(null);
     setStep("generating");
-    scheduleMockAction(() => {
-      setPlan(createPlan(refinementRequest));
+    try {
+      const generatedPlan = await generateWorkItemPlan({
+        mission,
+        refinementRequest,
+        currentPlan: plan ?? undefined,
+      });
+      setPlan(generatedPlan);
       setRefinementRequest("");
       setStep("preview");
-    });
+    } catch (generationError) {
+      setError(String(generationError));
+      setStep("preview");
+    }
   }
 
   function handleFinalSubmit() {
     setError(null);
+    setStep("confirm");
+  }
+
+  async function handleConfirmedSubmit() {
+    if (!plan || !submissionId) {
+      return;
+    }
+    setError(null);
+    setIsSubmissionLocked(true);
     setStep("submitting");
-    scheduleMockAction(() => setStep("success"));
+    try {
+      const result = await submitWorkItemPlan({
+        plan,
+        submissionId,
+        existingAdoIds,
+      });
+      setSubmissionResult(result);
+      setExistingAdoIds(result.adoIds);
+      if (result.error) {
+        setStep("failure");
+        return;
+      }
+      await queryClient.invalidateQueries({ queryKey: ["boardData"] });
+      setStep("success");
+    } catch (submissionError) {
+      setError(String(submissionError));
+      setStep("failure");
+    }
   }
 
   function handleDialogKeyDown(event: React.KeyboardEvent<HTMLDivElement>) {
     if (event.key === "Escape") {
       event.preventDefault();
-      closeModal();
+      if (!isSubmissionLocked && step !== "submitting") {
+        closeModal();
+      }
       return;
     }
     if (event.key !== "Tab" || !dialogRef.current) {
@@ -279,12 +310,13 @@ export default function AiWorkItemModal({
   }
 
   const isBusy = step === "generating" || step === "submitting";
+  const hasPartialSubmission = isSubmissionLocked && step !== "success";
 
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       onMouseDown={(event) => {
-        if (event.target === event.currentTarget && !isBusy) {
+        if (event.target === event.currentTarget && !isBusy && !hasPartialSubmission) {
           closeModal();
         }
       }}
@@ -312,7 +344,7 @@ export default function AiWorkItemModal({
           <button
             type="button"
             onClick={closeModal}
-            disabled={isBusy}
+            disabled={isBusy || hasPartialSubmission}
             aria-label="Close AI planner"
             className="rounded p-2 text-xl text-gray-500 hover:bg-gray-100 hover:text-gray-800 disabled:cursor-not-allowed disabled:opacity-40 dark:text-gray-400 dark:hover:bg-gray-700 dark:hover:text-gray-100"
           >
@@ -331,6 +363,20 @@ export default function AiWorkItemModal({
                   "Please describe your mission with as much context as possible. Include the goal, users, constraints, and expected result."
                 }
               </p>
+              {isContextLoading && (
+                <p className="mt-4 text-sm text-gray-500 dark:text-gray-400">
+                  {"Loading Azure DevOps planning metadata..."}
+                </p>
+              )}
+              {context && !context.azureOpenaiConfigured && (
+                <div
+                  role="alert"
+                  className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
+                >
+                  <p className="font-semibold">{"Azure OpenAI is not configured"}</p>
+                  <p className="mt-1">{context.azureOpenaiConfigurationError}</p>
+                </div>
+              )}
               <label className="mt-5 block text-sm font-medium text-gray-700 dark:text-gray-300">
                 {"Mission"}
                 <textarea
@@ -360,8 +406,9 @@ export default function AiWorkItemModal({
                 </button>
                 <button
                   type="button"
-                  onClick={handleGenerate}
-                  className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+                  onClick={() => void handleGenerate()}
+                  disabled={isContextLoading || !context || !context.azureOpenaiConfigured}
+                  className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-gray-900"
                 >
                   {"Generate preview"}
                 </button>
@@ -388,7 +435,7 @@ export default function AiWorkItemModal({
                   </p>
                 </div>
                 <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-                  {"Mock preview - nothing has been created in ADO"}
+                  {"Preview - nothing has been created in ADO"}
                 </span>
               </div>
 
@@ -430,7 +477,7 @@ export default function AiWorkItemModal({
                 <div className="mt-3 flex flex-wrap justify-end gap-3">
                   <button
                     type="button"
-                    onClick={handleRegenerate}
+                    onClick={() => void handleRegenerate()}
                     className="rounded-lg border border-blue-600 bg-white px-4 py-2 text-sm font-semibold text-blue-700 hover:bg-blue-100 dark:bg-gray-800 dark:text-blue-300 dark:hover:bg-gray-700"
                   >
                     {"Regenerate"}
@@ -447,18 +494,91 @@ export default function AiWorkItemModal({
             </div>
           )}
 
+          {step === "confirm" && plan && (
+            <div className="mx-auto max-w-xl">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+                {"Create these work items in Azure DevOps?"}
+              </h3>
+              <p className="mt-3 text-gray-600 dark:text-gray-400">
+                {`This will create ${plan.items.length} work items, their parent-child hierarchy, and their dependency links in the configured project.`}
+              </p>
+              <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
+                {
+                  "This is a real external write. If ADO rejects an item partway through, creation will stop and the IDs already created will be shown."
+                }
+              </div>
+              <div className="mt-6 flex justify-end gap-3">
+                {!hasPartialSubmission && (
+                  <button
+                    type="button"
+                    onClick={() => setStep("preview")}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                  >
+                    {"Back to preview"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmedSubmit()}
+                  className="rounded-lg bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700"
+                >
+                  {"Create in ADO"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {step === "failure" && (
+            <div className="mx-auto max-w-2xl">
+              <h3 className="text-xl font-bold text-red-700 dark:text-red-400">
+                {"ADO submission stopped"}
+              </h3>
+              <p role="alert" className="mt-3 text-sm text-red-700 dark:text-red-300">
+                {submissionResult?.error ?? error ?? "The submission failed."}
+              </p>
+              {Object.keys(existingAdoIds).length > 0 && (
+                <div className="mt-4 rounded-lg border border-gray-300 bg-white p-4 dark:border-gray-700 dark:bg-gray-800">
+                  <p className="text-sm font-semibold text-gray-800 dark:text-gray-200">
+                    {"ADO IDs already created"}
+                  </p>
+                  <ul className="mt-2 space-y-1 text-sm text-gray-600 dark:text-gray-400">
+                    {Object.entries(existingAdoIds).map(([temporaryId, adoId]) => (
+                      <li key={temporaryId}>{`${temporaryId}: #${adoId}`}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="mt-6 flex justify-end gap-3">
+                {!hasPartialSubmission && (
+                  <button
+                    type="button"
+                    onClick={() => setStep("preview")}
+                    className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                  >
+                    {"Back to preview"}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void handleConfirmedSubmit()}
+                  className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  {"Retry submission"}
+                </button>
+              </div>
+            </div>
+          )}
+
           {step === "success" && (
             <div className="mx-auto flex min-h-72 max-w-xl flex-col items-center justify-center text-center">
               <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100 text-2xl font-bold text-green-700 dark:bg-green-900/40 dark:text-green-300">
                 {"OK"}
               </div>
               <h3 className="text-xl font-bold text-gray-900 dark:text-gray-100">
-                {"Mock submission completed"}
+                {"Work items created in Azure DevOps"}
               </h3>
               <p className="mt-2 text-gray-600 dark:text-gray-400">
-                {
-                  "The UI flow is complete, but no work items were created in Azure DevOps. Real submission will be connected in a later milestone."
-                }
+                {`${Object.keys(existingAdoIds).length} work items are now linked to real ADO IDs, and the board data has been refreshed.`}
               </p>
               <button
                 type="button"
