@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { updateWorkItemFields } from "../api/tauri";
 import AssignedToSelector from "./AssignedToSelector";
 import WorkItemPathSelector from "./WorkItemPathSelector";
+import RichTextFieldEditor from "./RichTextFieldEditor";
 import StateSelector from "./StateSelector";
 import {
   ALWAYS_VISIBLE_OVERVIEW_FIELD_REFERENCES,
@@ -119,6 +120,16 @@ function FieldEditor({
   const inputClass =
     "w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm";
 
+  if (normalizedType === "html") {
+    return (
+      <RichTextFieldEditor
+        value={getInputValue(value)}
+        editable={!disabled}
+        onChange={(nextValue) => onChange(nextValue)}
+      />
+    );
+  }
+
   if (disabled) {
     return (
       <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
@@ -155,7 +166,7 @@ function FieldEditor({
     );
   }
 
-  if (normalizedType === "html" || normalizedType === "plaintext") {
+  if (normalizedType === "plaintext") {
     return (
       <textarea
         className={`${inputClass} min-h-24`}
