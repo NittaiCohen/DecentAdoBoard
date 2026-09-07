@@ -6,6 +6,7 @@ use crate::models::*;
 use crate::state::AppState;
 
 const MAX_PROJECT_TAG_SEARCH_RESULTS: usize = 50;
+const MAX_COMMENT_PARSE_ERROR_BODY_LENGTH: usize = 8_000;
 
 #[tauri::command]
 pub async fn set_config(
@@ -45,6 +46,90 @@ pub async fn get_work_item_overview(
     work_item_id: i64,
 ) -> Result<WorkItemOverview, String> {
     ado_client::fetch_work_item_overview(&state, work_item_id).await
+}
+
+#[tauri::command]
+pub async fn get_work_item_comments(
+    state: State<'_, AppState>,
+    work_item_id: i64,
+) -> Result<Vec<WorkItemComment>, String> {
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workItems/{}/comments?$expand=renderedText&order=desc&api-version=7.1-preview.4",
+        config.organization, config.project, work_item_id
+    );
+
+    let response = state
+        .http_client
+        .get(&url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("Work item comments request failed: {e}"))?;
+    let response = ado_client::check_response(response, "Work item comments").await?;
+    let response_body = response
+        .text()
+        .await
+        .map_err(|e| format!("Work item comments response read error: {e}"))?;
+    let data: WorkItemCommentsResponse = serde_json::from_str(&response_body)
+        .map_err(|e| {
+            let response_preview: String = response_body
+                .chars()
+                .take(MAX_COMMENT_PARSE_ERROR_BODY_LENGTH)
+                .collect();
+            let truncation_suffix = if response_body.chars().count() > MAX_COMMENT_PARSE_ERROR_BODY_LENGTH {
+                "... [response truncated]"
+            } else {
+                ""
+            };
+
+            format!(
+                "Work item comments response parse error: {e}; response body: {response_preview}{truncation_suffix}"
+            )
+        })?;
+
+    Ok(data
+        .comments
+        .into_iter()
+        .map(|comment| WorkItemComment {
+            id: comment.id,
+            text: comment.text,
+            rendered_text: comment.rendered_text,
+            created_by: comment
+                .created_by
+                .map(|identity| identity.display_name)
+                .unwrap_or_else(|| "Unknown user".to_string()),
+            created_date: comment.created_date,
+            is_deleted: comment.is_deleted,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn add_work_item_comment(
+    state: State<'_, AppState>,
+    work_item_id: i64,
+    text: String,
+) -> Result<(), String> {
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workItems/{}/comments?format=html&api-version=7.1-preview.4",
+        config.organization, config.project, work_item_id
+    );
+
+    let response = state
+        .http_client
+        .post(&url)
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({ "text": text }))
+        .send()
+        .await
+        .map_err(|e| format!("Add work item comment request failed: {e}"))?;
+    ado_client::check_response(response, "Add work item comment").await?;
+
+    Ok(())
 }
 
 #[tauri::command]

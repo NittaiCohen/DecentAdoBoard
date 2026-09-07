@@ -68,6 +68,42 @@ pub struct ProjectTag {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct WorkItemCommentsResponse {
+    pub comments: Vec<AdoComment>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WorkItemComment {
+    pub id: i64,
+    pub text: String,
+    #[serde(rename = "renderedText")]
+    pub rendered_text: Option<String>,
+    #[serde(rename = "createdBy")]
+    pub created_by: String,
+    #[serde(rename = "createdDate")]
+    pub created_date: String,
+    #[serde(rename = "isDeleted")]
+    #[serde(default)]
+    pub is_deleted: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AdoComment {
+    #[serde(alias = "commentId")]
+    pub id: i64,
+    pub text: String,
+    #[serde(rename = "renderedText")]
+    pub rendered_text: Option<String>,
+    #[serde(rename = "createdBy")]
+    pub created_by: Option<AdoIdentityRef>,
+    #[serde(rename = "createdDate")]
+    pub created_date: String,
+    #[serde(rename = "isDeleted")]
+    #[serde(default)]
+    pub is_deleted: bool,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct AdoRelation {
     pub rel: String,
     pub url: String,
@@ -309,6 +345,35 @@ mod tests {
         assert_eq!(
             item.relations.unwrap()[0].rel,
             "System.LinkTypes.Dependency-Forward"
+        );
+    }
+
+    #[test]
+    fn ado_comments_response_deserializes() {
+        let response: WorkItemCommentsResponse = serde_json::from_value(json!({
+            "comments": [{
+                "workItemId": 123,
+                "id": 45,
+                "version": 1,
+                "text": "A comment",
+                "renderedText": "<p>A comment</p>",
+                "createdBy": {
+                    "displayName": "Ada Lovelace"
+                },
+                "createdDate": "2026-09-07T12:00:00Z",
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(response.comments.len(), 1);
+        assert_eq!(response.comments[0].id, 45);
+        assert_eq!(
+            response.comments[0]
+                .created_by
+                .as_ref()
+                .unwrap()
+                .display_name,
+            "Ada Lovelace"
         );
     }
 

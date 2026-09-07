@@ -95,6 +95,15 @@ export interface ProjectTag {
   name: string;
 }
 
+export interface WorkItemComment {
+  id: number;
+  text: string;
+  renderedText: string | null;
+  createdBy: string;
+  createdDate: string;
+  isDeleted: boolean;
+}
+
 export interface WorkItemFieldUpdate {
   referenceName: string;
   value: JsonValue;

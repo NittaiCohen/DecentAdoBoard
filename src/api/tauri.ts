@@ -7,6 +7,7 @@ import type {
   ProjectTag,
   TeamInfo,
   WorkItemFieldUpdate,
+  WorkItemComment,
   WorkItemOverview,
   WorkItemTypeState,
 } from "../types";
@@ -91,6 +92,16 @@ export async function getBoardData(): Promise<BoardData> {
 /** Fetch the complete field data and field metadata for a work item. */
 export async function getWorkItemOverview(workItemId: number): Promise<WorkItemOverview> {
   return await invoke<WorkItemOverview>("get_work_item_overview", { workItemId });
+}
+
+/** Fetch the first page of comments for a work item. */
+export async function getWorkItemComments(workItemId: number): Promise<WorkItemComment[]> {
+  return await invoke<WorkItemComment[]>("get_work_item_comments", { workItemId });
+}
+
+/** Add an HTML-formatted comment to a work item. */
+export async function addWorkItemComment(workItemId: number, text: string): Promise<void> {
+  await invoke("add_work_item_comment", { workItemId, text });
 }
 
 /** Update a work item's state in ADO. */

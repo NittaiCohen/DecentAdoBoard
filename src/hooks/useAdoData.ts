@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
-import { getBoardData, getWorkItemOverview } from "../api/tauri";
-import type { BoardData, WorkItemOverview } from "../types";
+import { useQuery, type UseQueryResult } from "@tanstack/react-query";
+import { getBoardData, getWorkItemComments, getWorkItemOverview } from "../api/tauri";
+import type { BoardData, WorkItemComment, WorkItemOverview } from "../types";
 
 /** React Query hook that fetches board data when enabled. */
 export function useBoardData(enabled: boolean) {
@@ -16,5 +16,13 @@ export function useWorkItemOverview(workItemId: number) {
   return useQuery<WorkItemOverview>({
     queryKey: ["workItemOverview", workItemId],
     queryFn: () => getWorkItemOverview(workItemId),
+  });
+}
+
+/** Fetch work item comments as soon as an overview starts loading. */
+export function useWorkItemComments(workItemId: number): UseQueryResult<WorkItemComment[], Error> {
+  return useQuery<WorkItemComment[], Error>({
+    queryKey: ["workItemComments", workItemId],
+    queryFn: () => getWorkItemComments(workItemId),
   });
 }

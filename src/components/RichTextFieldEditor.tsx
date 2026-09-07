@@ -32,6 +32,7 @@ interface RichTextFieldEditorProps {
   value: string;
   onChange: (value: string) => void;
   editable?: boolean;
+  initiallyExpanded?: boolean;
 }
 
 const editorExtensions = [
@@ -244,9 +245,10 @@ export default function RichTextFieldEditor({
   value,
   onChange,
   editable = true,
+  initiallyExpanded = !hasRichTextContent(value),
 }: RichTextFieldEditorProps) {
   const [isSelected, setIsSelected] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(() => !hasRichTextContent(value));
+  const [isCollapsed, setIsCollapsed] = useState(() => !initiallyExpanded);
   const containerRef = useRef<HTMLDivElement>(null);
   const sanitizedValue = useMemo(() => sanitizeHtml(value), [value]);
   const editor = useEditor({

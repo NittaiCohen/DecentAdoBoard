@@ -4,6 +4,7 @@ import { updateWorkItemFields } from "../api/tauri";
 import AssignedToSelector from "./AssignedToSelector";
 import TagsEditor from "./TagsEditor";
 import WorkItemPathSelector from "./WorkItemPathSelector";
+import WorkItemComments from "./WorkItemComments";
 import RichTextFieldEditor from "./RichTextFieldEditor";
 import StateSelector from "./StateSelector";
 import {
@@ -13,12 +14,13 @@ import {
 } from "../config/overviewFields";
 import StateBadge from "./StateBadge";
 import { DEFAULT_TYPE_COLOR, TYPE_COLORS } from "../utils/workItemColors";
-import { useWorkItemOverview } from "../hooks/useAdoData";
+import { useWorkItemComments, useWorkItemOverview } from "../hooks/useAdoData";
 import { useWorkItemTypeStates } from "../hooks/useWorkItemTypeStates";
 import { getOrderedStateOptions } from "../utils/workItemStates";
 import type {
   BoardData,
   JsonValue,
+  WorkItemComment,
   WorkItemFieldDefinition,
   WorkItemOverview as WorkItemOverviewData,
 } from "../types";
@@ -345,9 +347,15 @@ function FieldConfiguration({
 function OverviewContent({
   overview,
   onClose,
+  comments,
+  commentsError,
+  commentsLoading,
 }: {
   overview: WorkItemOverviewData;
   onClose: () => void;
+  comments: WorkItemComment[];
+  commentsError: unknown;
+  commentsLoading: boolean;
 }) {
   const queryClient = useQueryClient();
   const [isConfiguring, setIsConfiguring] = useState(false);
@@ -592,6 +600,12 @@ function OverviewContent({
           <div className="space-y-4 pt-5">{richTextFields.map(renderField)}</div>
           <div className="grid gap-4 md:grid-cols-2">{otherFields.map(renderField)}</div>
         </div>
+        <WorkItemComments
+          workItemId={overview.id}
+          comments={comments}
+          commentsError={commentsError}
+          commentsLoading={commentsLoading}
+        />
       </div>
 
       <div className="flex justify-end gap-2 border-t border-gray-200 dark:border-gray-700 px-6 py-3">
@@ -617,6 +631,11 @@ function OverviewContent({
 
 export default function WorkItemOverview({ workItemId, onClose }: WorkItemOverviewProps) {
   const { data, isLoading, error } = useWorkItemOverview(workItemId);
+  const {
+    data: comments = [],
+    error: commentsError,
+    isLoading: commentsLoading,
+  } = useWorkItemComments(workItemId);
 
   return (
     <div
@@ -650,7 +669,15 @@ export default function WorkItemOverview({ workItemId, onClose }: WorkItemOvervi
             </button>
           </div>
         )}
-        {data && <OverviewContent overview={data} onClose={onClose} />}
+        {data && (
+          <OverviewContent
+            overview={data}
+            onClose={onClose}
+            comments={comments}
+            commentsError={commentsError}
+            commentsLoading={commentsLoading}
+          />
+        )}
       </div>
     </div>
   );
