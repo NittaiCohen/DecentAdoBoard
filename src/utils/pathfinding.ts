@@ -386,12 +386,11 @@ export function orthogonalAStar(
       // Misalignment cost: continuing straight when target is offset perpendicular
       const dx = Math.abs(neighbor.x - target.x);
       const dy = Math.abs(neighbor.y - target.y);
+      const hasPerpendicularMisalignment =
+        (newDirection === DIRECTION_HORIZONTAL && dy > 0) ||
+        (newDirection === DIRECTION_VERTICAL && dx > 0);
       const misalignmentCost =
-        !isTurn && newDirection === DIRECTION_HORIZONTAL && dy > 0
-          ? EARLY_TURN_BIAS * distance
-          : !isTurn && newDirection === DIRECTION_VERTICAL && dx > 0
-            ? EARLY_TURN_BIAS * distance
-            : 0;
+        !isTurn && hasPerpendicularMisalignment ? EARLY_TURN_BIAS * distance : 0;
 
       const tentativeGScore =
         current.gScore + distance + (isTurn ? turnPenalty : 0) + misalignmentCost;

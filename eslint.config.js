@@ -37,6 +37,7 @@ export default tseslint.config(
         },
       ],
       eqeqeq: ["error", "always"],
+      "no-nested-ternary": "error",
       "@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "never" }],
       "@typescript-eslint/consistent-type-imports": ["error", { prefer: "type-imports" }],
       "@typescript-eslint/no-unused-vars": [
