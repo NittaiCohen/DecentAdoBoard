@@ -577,7 +577,7 @@ export default function WorkItemOverview({ workItemId, onClose }: WorkItemOvervi
       }}
     >
       <div
-        className="h-[min(90vh,900px)] w-full max-w-5xl overflow-hidden rounded-xl bg-gray-50 text-gray-900 shadow-2xl dark:bg-gray-900 dark:text-gray-100"
+        className="h-[95vh] w-[95vw] max-w-none overflow-hidden rounded-xl bg-gray-50 text-gray-900 shadow-2xl dark:bg-gray-900 dark:text-gray-100"
         role="dialog"
         aria-modal="true"
         aria-label="Work item overview"
