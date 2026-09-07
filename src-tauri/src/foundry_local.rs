@@ -2,7 +2,8 @@ use crate::ado_client::check_response;
 
 const FOUNDRY_LOCAL_ENDPOINT_ENV: &str = "DECENT_ADO_BOARD_FOUNDRY_LOCAL_ENDPOINT";
 const FOUNDRY_LOCAL_MODEL_ENV: &str = "DECENT_ADO_BOARD_FOUNDRY_LOCAL_MODEL";
-const PREFERRED_MODELS: [&str; 3] = ["phi-4", "phi-3.5-mini", "qwen2.5-7b"];
+/// Quality-first ordering, used only to pick among models that are already downloaded.
+const PREFERRED_MODELS: [&str; 4] = ["phi-4", "qwen2.5-7b", "phi-4-mini", "phi-3.5-mini"];
 /// Local generation includes a first-request model load, so it needs far more headroom than
 /// the shared client's default timeout allows.
 const GENERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
@@ -135,7 +136,9 @@ fn choose_model(
         return Ok(preferred);
     }
     available_models.first().cloned().ok_or_else(|| {
-        "Foundry Local has no downloaded models. Run: foundry model download phi-4".to_string()
+        "Foundry Local is running but no models are downloaded. Download one with: \
+         foundry model download phi-4-mini"
+            .to_string()
     })
 }
 
@@ -349,8 +352,14 @@ mod tests {
             ServerStatus::Initializing
         );
         assert_eq!(
-            parse_server_status("State Running\nEndpoint http://localhost:52701/v1\n"),
-            ServerStatus::Running("http://localhost:52701/v1".to_string())
+            parse_server_status(
+                "State    Ready                 \n\
+                 PID      45128                 \n\
+                 Started  2026-09-07 22:09:42Z  \n\
+                 Uptime   0s                    \n\
+                 Web URLs http://127.0.0.1:58372\n"
+            ),
+            ServerStatus::Running("http://127.0.0.1:58372".to_string())
         );
         assert_eq!(
             parse_server_status("something unexpected"),
@@ -401,6 +410,6 @@ mod tests {
         );
         assert!(choose_model(&[], None)
             .unwrap_err()
-            .contains("no downloaded models"));
+            .contains("no models are downloaded"));
     }
 }

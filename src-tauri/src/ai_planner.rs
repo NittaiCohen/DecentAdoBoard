@@ -376,6 +376,41 @@ async fn request_azure_openai_completion(
 
 /// Prompt construction, JSON extraction, and validation are shared by every backend so the
 /// provider only supplies transport.
+async fn request_completion(
+    state: &AppState,
+    backend: &ResolvedAiBackend,
+    system_prompt: &str,
+    user_prompt: &str,
+) -> Result<String, String> {
+    match backend {
+        ResolvedAiBackend::AzureOpenAi => {
+            request_azure_openai_completion(state, system_prompt, user_prompt).await
+        }
+        ResolvedAiBackend::FoundryLocal(config) => {
+            foundry_local::generate_chat_completion(
+                &state.http_client,
+                config,
+                system_prompt,
+                user_prompt,
+            )
+            .await
+        }
+    }
+}
+
+/// Asks the model to fix its own malformed output. Small on-device models frequently add prose
+/// or truncate JSON, and a single corrective attempt recovers most of those cases without
+/// making the user retype the mission.
+fn repair_prompt(previous_response: &str, parse_error: &str) -> String {
+    format!(
+        "Your previous response could not be parsed as the required JSON object.\n\
+         Parse error: {parse_error}\n\n\
+         Previous response:\n{previous_response}\n\n\
+         Reply with the corrected JSON object only. Do not include explanations, \
+         markdown fences, or any text outside the JSON."
+    )
+}
+
 async fn generate_plan_with_backend(
     state: &AppState,
     backend: &ResolvedAiBackend,
@@ -385,23 +420,22 @@ async fn generate_plan_with_backend(
     let system_prompt = planner_system_prompt(context)?;
     let user_prompt = planner_user_prompt(request)?;
 
-    let content = match backend {
-        ResolvedAiBackend::AzureOpenAi => {
-            request_azure_openai_completion(state, &system_prompt, &user_prompt).await?
-        }
-        ResolvedAiBackend::FoundryLocal(config) => {
-            foundry_local::generate_chat_completion(
-                &state.http_client,
-                config,
-                &system_prompt,
-                &user_prompt,
-            )
-            .await?
-        }
+    let content = request_completion(state, backend, &system_prompt, &user_prompt).await?;
+    let parse_error = match serde_json::from_str(extract_json_content(&content)) {
+        Ok(plan) => return Ok(plan),
+        Err(error) => error.to_string(),
     };
 
-    serde_json::from_str(extract_json_content(&content))
-        .map_err(|error| format!("The AI returned an invalid work-item plan: {error}"))
+    let repaired = request_completion(
+        state,
+        backend,
+        &system_prompt,
+        &repair_prompt(&content, &parse_error),
+    )
+    .await?;
+    serde_json::from_str(extract_json_content(&repaired)).map_err(|error| {
+        format!("The AI returned an invalid work-item plan: {error}. Try rephrasing your mission, or use a larger model.")
+    })
 }
 
 fn has_cycle(edges: &HashMap<String, Vec<String>>) -> bool {
