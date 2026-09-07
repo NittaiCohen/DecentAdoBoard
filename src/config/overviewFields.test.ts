@@ -35,23 +35,30 @@ describe("getDefaultOverviewFieldSelection", () => {
     ).toEqual([]);
   });
 
+  it("does not select hidden standard fields by reference name", () => {
+    expect(
+      getDefaultOverviewFieldSelection([
+        { referenceName: "Microsoft.VSTS.Common.Activity", name: "Activity" },
+        { referenceName: "Microsoft.VSTS.Common.Effort", name: "Effort" },
+        { referenceName: "Microsoft.VSTS.Common.StackRank", name: "Stack Rank" },
+        { referenceName: "System.History", name: "History" },
+      ]),
+    ).toEqual([]);
+  });
+
   it("keeps the approved field names and excludes custom fields by default", () => {
     const allowedNames = [
       "Acceptance Criteria",
-      "Activity",
       "Area Path",
       "Assigned To",
       "Completed Work",
       "Description",
-      "Effort",
-      "History",
       "Iteration Path",
       "Original Estimate",
       "Priority",
       "Remaining Work",
       "Repro Steps",
       "Severity",
-      "Stack Rank",
       "State",
       "Story Points",
       "System Info",

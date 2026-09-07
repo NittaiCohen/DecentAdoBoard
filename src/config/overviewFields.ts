@@ -2,38 +2,30 @@ import type { WorkItemType } from "../types";
 
 const DEFAULT_OVERVIEW_FIELD_REFERENCES = new Set([
   "Microsoft.VSTS.Common.AcceptanceCriteria",
-  "Microsoft.VSTS.Common.Activity",
   "Microsoft.VSTS.Common.CompletedWork",
-  "Microsoft.VSTS.Common.Effort",
   "Microsoft.VSTS.Common.OriginalEstimate",
   "Microsoft.VSTS.Common.Priority",
   "Microsoft.VSTS.Common.RemainingWork",
   "Microsoft.VSTS.Common.Severity",
-  "Microsoft.VSTS.Common.StackRank",
   "Microsoft.VSTS.Common.StoryPoints",
   "Microsoft.VSTS.TCM.ReproSteps",
   "Microsoft.VSTS.TCM.SystemInfo",
   "System.AreaPath",
   "System.Description",
-  "System.History",
   "System.IterationPath",
 ]);
 
 const DEFAULT_OVERVIEW_FIELD_NAMES = new Set([
   "acceptance criteria",
-  "activity",
   "area path",
   "completed work",
   "description",
-  "effort",
-  "history",
   "iteration path",
   "original estimate",
   "priority",
   "remaining work",
   "repro steps",
   "severity",
-  "stack rank",
   "story points",
   "system info",
 ]);
