@@ -89,6 +89,12 @@ const HEADER_FIELD_ORDER = [
   STATE_FIELD_REFERENCE,
   ITERATION_PATH_FIELD_REFERENCE,
 ];
+const RICH_TEXT_FIELD_ORDER = [
+  "System.Description",
+  "Microsoft.VSTS.TCM.ReproSteps",
+  "Microsoft.VSTS.TCM.SystemInfo",
+  "Microsoft.VSTS.Common.AcceptanceCriteria",
+];
 
 function getHeaderFields(fields: WorkItemFieldDefinition[]): WorkItemFieldDefinition[] {
   const fieldsByReference = new Map(fields.map((field) => [field.referenceName, field]));
@@ -388,6 +394,13 @@ function OverviewContent({
         ALWAYS_VISIBLE_OVERVIEW_FIELD_REFERENCES.has(field.referenceName)) &&
       !SPECIAL_FIELD_REFERENCES.has(field.referenceName),
   );
+  const richTextFields = RICH_TEXT_FIELD_ORDER.flatMap((referenceName) => {
+    const field = visibleFields.find((candidate) => candidate.referenceName === referenceName);
+    return field ? [field] : [];
+  });
+  const otherFields = visibleFields.filter(
+    (field) => !RICH_TEXT_FIELD_ORDER.includes(field.referenceName),
+  );
   const hasChanges = availableFields.some(
     (field) =>
       !field.readOnly &&
@@ -459,6 +472,28 @@ function OverviewContent({
     } finally {
       setIsSaving(false);
     }
+  }
+
+  function renderField(field: WorkItemFieldDefinition) {
+    return (
+      <div key={field.referenceName} className="space-y-1">
+        {field.fieldType.toLowerCase() !== "html" && (
+          <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
+            {field.name}
+          </label>
+        )}
+        <FieldEditor
+          field={field}
+          value={draftFields[field.referenceName] ?? null}
+          onChange={(value) =>
+            setDraftFields((current) => ({
+              ...current,
+              [field.referenceName]: value,
+            }))
+          }
+        />
+      </div>
+    );
   }
 
   return (
@@ -553,26 +588,9 @@ function OverviewContent({
           </p>
         )}
 
-        <div className="grid gap-4 md:grid-cols-2">
-          {visibleFields.map((field) => (
-            <div key={field.referenceName} className="space-y-1">
-              {field.fieldType.toLowerCase() !== "html" && (
-                <label className="block text-xs font-medium text-gray-500 dark:text-gray-400">
-                  {field.name}
-                </label>
-              )}
-              <FieldEditor
-                field={field}
-                value={draftFields[field.referenceName] ?? null}
-                onChange={(value) =>
-                  setDraftFields((current) => ({
-                    ...current,
-                    [field.referenceName]: value,
-                  }))
-                }
-              />
-            </div>
-          ))}
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="space-y-4 pt-5">{richTextFields.map(renderField)}</div>
+          <div className="grid gap-4 md:grid-cols-2">{otherFields.map(renderField)}</div>
         </div>
       </div>
 
