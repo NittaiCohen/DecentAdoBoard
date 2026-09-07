@@ -14,6 +14,8 @@ export interface ParentGroupData extends Record<string, unknown> {
   width: number;
   height: number;
   onToggleExpand?: (id: number) => void;
+  previewMode?: boolean;
+  onPreviewStateChange?: (workItemId: number, newState: string) => void;
 }
 
 export type ParentGroupNode = Node<ParentGroupData, typeof BOARD_NODE_TYPES.parentGroup>;
@@ -63,11 +65,13 @@ function ParentGroupComponent({ data, positionAbsoluteX }: NodeProps<ParentGroup
       <Handle
         type="target"
         position={Position.Left}
+        isConnectable
         className="!bg-gray-500 dark:!bg-gray-400 !w-2 !h-2"
       />
       <Handle
         type="source"
         position={Position.Right}
+        isConnectable
         className="!bg-gray-500 dark:!bg-gray-400 !w-2 !h-2"
       />
 
@@ -80,11 +84,18 @@ function ParentGroupComponent({ data, positionAbsoluteX }: NodeProps<ParentGroup
           transition: `left ${HEADER_SLIDE_DURATION_S}s ease-out, width ${HEADER_SLIDE_DURATION_S}s ease-out`,
         }}
       >
-        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">{`#${data.workItemId}`}</span>
+        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+          {data.previewMode ? "Preview" : `#${data.workItemId}`}
+        </span>
         <StateDropdown
           workItemId={data.workItemId}
           workItemType={data.workItemType}
           currentState={data.state}
+          onStateChange={
+            data.onPreviewStateChange
+              ? (newState) => data.onPreviewStateChange?.(data.workItemId, newState)
+              : undefined
+          }
         />
         <span
           className="text-xs text-gray-900 dark:text-gray-100 truncate flex-1"

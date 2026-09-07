@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import GraphView from "./components/GraphView";
 import ActionableSidebar from "./components/ActionableSidebar";
 import HamburgerMenu from "./components/HamburgerMenu";
+import AiWorkItemModal from "./components/AiWorkItemModal";
 import { MicrosoftLogin } from "./components/MicrosoftLogin";
 import ProjectSelector from "./components/ProjectSelector";
 import { useBoardData } from "./hooks/useAdoData";
@@ -11,9 +12,11 @@ import type { BoardData } from "./types";
 import { useUndoRedo } from "./hooks/useUndoRedo";
 import { UndoRedoProvider } from "./contexts/UndoRedoContext";
 import type { OperationContext } from "./utils/reversibleOperations";
+import { findCurrentIterationPath } from "./utils/iterations";
 import "./App.css";
 
 type AppStep = "pat" | "project" | "board";
+const CURRENT_USER_NAME = "Shoham Amar";
 
 function FullScreenMessage({ children }: { children: React.ReactNode }) {
   return (
@@ -110,11 +113,16 @@ function BoardView({
   onChangeProject: () => void;
   onSignOut: () => void;
 }) {
+  const [isAiPlannerOpen, setIsAiPlannerOpen] = useState(false);
   const operationContextRef = useRef<OperationContext>(null);
   const { push: pushUndo, undo, redo } = useUndoRedo(operationContextRef);
   const contextValue = useMemo(
     () => ({ push: pushUndo, operationContextRef }),
     [pushUndo, operationContextRef],
+  );
+  const currentIterationPath = useMemo(
+    () => findCurrentIterationPath(boardData?.iterations ?? []),
+    [boardData?.iterations],
   );
 
   return (
@@ -129,6 +137,26 @@ function BoardView({
             redo={redo}
           />
           <HamburgerMenu onChangeProject={onChangeProject} onSignOut={onSignOut} />
+          <button
+            type="button"
+            onClick={() => setIsAiPlannerOpen(true)}
+            className="absolute bottom-4 right-4 z-20 flex items-center gap-2 rounded-full bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+            aria-label="Open AI Planner"
+          >
+            <span
+              aria-hidden="true"
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-xs"
+            >
+              {"AI"}
+            </span>
+            {"AI Planner"}
+          </button>
+          <AiWorkItemModal
+            isOpen={isAiPlannerOpen}
+            onClose={() => setIsAiPlannerOpen(false)}
+            defaultAssignedTo={CURRENT_USER_NAME}
+            defaultIterationPath={currentIterationPath}
+          />
         </div>
         <ActionableSidebar isOpen={sidebarOpen} onToggle={onToggleSidebar} boardData={boardData} />
       </div>

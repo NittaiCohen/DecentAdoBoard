@@ -29,7 +29,7 @@ import { BOARD_NODE_TYPES } from "../types/graph";
 import { buildGraphLayout, buildNodePositions } from "../utils/graphLayout";
 import { assignLaneOffsets } from "../utils/edgeRouting";
 import { wouldCreateCycle } from "../utils/dependencies";
-import { useDragReorder } from "../hooks/useDragReorder";
+import { extractWorkItemId, useDragReorder } from "../hooks/useDragReorder";
 import { useExpandedParents } from "../hooks/useExpandedParents";
 import type {
   IterationChange,
@@ -40,11 +40,33 @@ import { applyOperation } from "../utils/reversibleOperations";
 
 interface GraphViewProps {
   boardData?: BoardData;
+  operationContextRef?: React.RefObject<OperationContext | null>;
+  pushUndo?: (op: ReversibleOperation) => void;
+  undo?: () => void;
+  redo?: () => void;
+  readOnly?: boolean;
+  previewActions?: GraphPreviewActions;
+}
+
+export interface GraphPreviewActions {
+  onStateChange: (workItemId: number, newState: string) => void;
+  onIterationChange: (iterationChanges: IterationChange[]) => void;
+  onAddDependency: (sourceId: number, targetId: number) => void;
+  onRemoveDependency: (sourceId: number, targetId: number) => void;
+}
+
+interface GraphViewInnerProps {
+  boardData?: BoardData;
   operationContextRef: React.RefObject<OperationContext | null>;
   pushUndo: (op: ReversibleOperation) => void;
   undo: () => void;
   redo: () => void;
+  readOnly: boolean;
+  previewActions?: GraphPreviewActions;
 }
+
+const NO_OP = () => {};
+const NO_OP_OPERATION = (_operation: ReversibleOperation) => {};
 
 const nodeTypes: NodeTypes = {
   workItem: WorkItemNodeComponent,
@@ -63,18 +85,24 @@ const DEBUG_SHOW_OBSTACLES = false;
 export default function GraphView({
   boardData,
   operationContextRef,
-  pushUndo,
-  undo,
-  redo,
+  pushUndo = NO_OP_OPERATION,
+  undo = NO_OP,
+  redo = NO_OP,
+  readOnly = false,
+  previewActions,
 }: GraphViewProps) {
+  const internalOperationContextRef = useRef<OperationContext>(null);
+
   return (
     <ReactFlowProvider>
       <GraphViewInner
         boardData={boardData}
-        operationContextRef={operationContextRef}
+        operationContextRef={operationContextRef ?? internalOperationContextRef}
         pushUndo={pushUndo}
         undo={undo}
         redo={redo}
+        readOnly={readOnly}
+        previewActions={previewActions}
       />
     </ReactFlowProvider>
   );
@@ -89,7 +117,15 @@ const FIT_VIEW_ANIMATION_DURATION_MS = 300;
 const BACKGROUND_GRID_GAP = 16;
 const BACKGROUND_DOT_SIZE = 1;
 
-function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }: GraphViewProps) {
+function GraphViewInner({
+  boardData,
+  operationContextRef,
+  pushUndo,
+  undo,
+  redo,
+  readOnly,
+  previewActions,
+}: GraphViewInnerProps) {
   const [expandedParents, handleToggleExpand] = useExpandedParents(boardData);
   const { setViewport, getViewport, fitView } = useReactFlow();
   const queryClient = useQueryClient();
@@ -114,13 +150,21 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
     return {
       nodes: result.nodes.map((n) => {
         if (n.type === BOARD_NODE_TYPES.workItem || n.type === BOARD_NODE_TYPES.parentGroup) {
-          return { ...n, data: { ...n.data, onToggleExpand: handleToggleExpand } };
+          return {
+            ...n,
+            data: {
+              ...n.data,
+              onToggleExpand: handleToggleExpand,
+              previewMode: previewActions !== undefined,
+              onPreviewStateChange: previewActions?.onStateChange,
+            },
+          };
         }
         return n;
       }),
       edges: result.edges,
     };
-  }, [boardData, expandedParents, handleToggleExpand]);
+  }, [boardData, expandedParents, handleToggleExpand, previewActions]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(layoutNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);
@@ -159,6 +203,13 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
 
   const handleSprintChange = useCallback(
     (iterationChanges: IterationChange[]) => {
+      if (previewActions) {
+        previewActions.onIterationChange(iterationChanges);
+        return;
+      }
+      if (readOnly) {
+        return;
+      }
       const ctx = operationContextRef.current;
       if (!ctx) {
         return;
@@ -177,22 +228,33 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
         )
         .forEach((operation) => applyOperation(operation, ctx));
     },
-    [wiMap, operationContextRef],
+    [wiMap, operationContextRef, previewActions, readOnly],
   );
 
   useEffect(() => {
+    if (readOnly) {
+      return;
+    }
     operationContextRef.current = { queryClient, setNodes, onDragSettled: handleDragSettled };
-  });
+  }, [handleDragSettled, operationContextRef, queryClient, readOnly, setNodes]);
 
   const handleConnect = useCallback(
     (connection: Connection) => {
-      const sourceId = parseInt(connection.source.replace("wi-", ""), 10);
-      const targetId = parseInt(connection.target.replace("wi-", ""), 10);
-      if (isNaN(sourceId) || isNaN(targetId)) {
+      if (readOnly) {
+        return;
+      }
+      const sourceId = extractWorkItemId(connection.source);
+      const targetId = extractWorkItemId(connection.target);
+      if (sourceId === undefined || targetId === undefined || isNaN(sourceId) || isNaN(targetId)) {
         return;
       }
 
       if (wouldCreateCycle(sourceId, targetId, wiMap)) {
+        return;
+      }
+
+      if (previewActions) {
+        previewActions.onAddDependency(sourceId, targetId);
         return;
       }
 
@@ -210,33 +272,49 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
       applyOperation(op, ctx);
       pushUndo(op);
     },
-    [wiMap, pushUndo, operationContextRef],
+    [wiMap, pushUndo, operationContextRef, previewActions, readOnly],
   );
 
   const handleEdgesDelete = useCallback(
     (deletedEdges: Edge[]) => {
-      const ctx = operationContextRef.current;
-      if (!ctx) {
+      if (readOnly) {
         return;
       }
+      const ctx = operationContextRef.current;
+      if (!ctx && !previewActions) {
+        return;
+      }
+      const operationContext = ctx;
       deletedEdges.forEach((edge) => {
-        const match = /^edge-(\d+)-(\d+)$/.exec(edge.id);
-        if (!match) {
+        const sourceId = extractWorkItemId(edge.source);
+        const targetId = extractWorkItemId(edge.target);
+        if (
+          sourceId === undefined ||
+          targetId === undefined ||
+          isNaN(sourceId) ||
+          isNaN(targetId)
+        ) {
           return;
         }
-        const sourceWiId = parseInt(match[1], 10);
-        const targetWiId = parseInt(match[2], 10);
+
+        if (previewActions) {
+          previewActions.onRemoveDependency(sourceId, targetId);
+          return;
+        }
+        if (!operationContext) {
+          return;
+        }
 
         const op: ReversibleOperation = {
           type: "removeDependencyRelation",
-          sourceId: sourceWiId,
-          targetId: targetWiId,
+          sourceId,
+          targetId,
         };
-        applyOperation(op, ctx);
+        applyOperation(op, operationContext);
         pushUndo(op);
       });
     },
-    [pushUndo, operationContextRef],
+    [pushUndo, operationContextRef, previewActions, readOnly],
   );
 
   const { handleNodeDragStart, handleNodeDrag, handleNodeDragStop } = useDragReorder(
@@ -306,8 +384,8 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
     zoomToCenter(Math.max(MIN_ZOOM, zoom / ZOOM_FACTOR));
   }, [getViewport, zoomToCenter]);
 
-  useKeyDown({ key: "z", modifiers: ["ctrl"] }, undo);
-  useKeyDown({ key: "y", modifiers: ["ctrl"] }, redo);
+  useKeyDown({ key: "z", modifiers: ["ctrl"] }, undo, { enabled: !readOnly });
+  useKeyDown({ key: "y", modifiers: ["ctrl"] }, redo, { enabled: !readOnly });
   useKeyDown(
     [
       { key: "=", modifiers: ["ctrl"] },
@@ -333,13 +411,16 @@ function GraphViewInner({ boardData, operationContextRef, pushUndo, undo, redo }
         edges={edges}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        onNodeDragStart={handleNodeDragStart}
-        onNodeDrag={handleNodeDrag}
-        onNodeDragStop={handleNodeDragStop}
-        onConnect={handleConnect}
-        onEdgesDelete={handleEdgesDelete}
+        onNodeDragStart={readOnly ? undefined : handleNodeDragStart}
+        onNodeDrag={readOnly ? undefined : handleNodeDrag}
+        onNodeDragStop={readOnly ? undefined : handleNodeDragStop}
+        onConnect={readOnly ? undefined : handleConnect}
+        onEdgesDelete={readOnly ? undefined : handleEdgesDelete}
         nodeTypes={nodeTypes}
         edgeTypes={edgeTypes}
+        nodesDraggable={!readOnly}
+        nodesConnectable={!readOnly}
+        deleteKeyCode={readOnly ? null : ["Backspace", "Delete"]}
         fitView
         proOptions={{ hideAttribution: true }}
         minZoom={MIN_ZOOM}

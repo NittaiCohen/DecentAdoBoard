@@ -13,20 +13,38 @@ export interface WorkItemNodeData extends Record<string, unknown> {
   childCount: number;
   doneChildCount: number;
   onToggleExpand?: (id: number) => void;
+  previewMode?: boolean;
+  onPreviewStateChange?: (workItemId: number, newState: string) => void;
 }
 
 export type WorkItemNode = Node<WorkItemNodeData, typeof BOARD_NODE_TYPES.workItem>;
 
 function WorkItemHeader({ data }: { data: WorkItemNodeData }) {
-  const { workItem, isParent, isExpanded, childCount, doneChildCount, onToggleExpand } = data;
+  const {
+    workItem,
+    isParent,
+    isExpanded,
+    childCount,
+    doneChildCount,
+    onToggleExpand,
+    previewMode,
+    onPreviewStateChange,
+  } = data;
 
   return (
     <div className="flex items-center gap-1.5 mb-1">
-      <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">{`#${workItem.id}`}</span>
+      <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+        {previewMode ? "Preview" : `#${workItem.id}`}
+      </span>
       <StateDropdown
         workItemId={workItem.id}
         workItemType={workItem.type}
         currentState={workItem.state}
+        onStateChange={
+          onPreviewStateChange
+            ? (newState) => onPreviewStateChange(workItem.id, newState)
+            : undefined
+        }
       />
       {isParent && (
         <button
@@ -56,11 +74,13 @@ function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
       <Handle
         type="target"
         position={Position.Left}
+        isConnectable
         className="!bg-gray-500 dark:!bg-gray-400 !w-2 !h-2"
       />
       <Handle
         type="source"
         position={Position.Right}
+        isConnectable
         className="!bg-gray-500 dark:!bg-gray-400 !w-2 !h-2"
       />
 

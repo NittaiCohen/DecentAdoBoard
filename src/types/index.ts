@@ -10,4 +10,6 @@ export {
   type WorkItemTypeState,
 } from "./ado";
 
+export { type GeneratedWorkItem, type GeneratedWorkItemPlan } from "./ai";
+
 export { type RequiredSome, type Point } from "./utils";

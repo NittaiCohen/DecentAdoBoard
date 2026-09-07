@@ -170,4 +170,29 @@ describe("StateDropdown", () => {
     const dropdownItem = activeElements.find((el) => el.closest("button[disabled]"));
     expect(dropdownItem).toBeTruthy();
   });
+
+  it("uses a local state-change handler without updating ADO", async () => {
+    const onStateChange = vi.fn();
+    const mockedUpdate = vi.mocked(updateWorkItemState);
+    mockedUpdate.mockClear();
+
+    render(
+      createElement(StateDropdown, {
+        workItemId: -1,
+        workItemType: "Task",
+        currentState: "New",
+        onStateChange,
+      }),
+      { wrapper: createWrapper() },
+    );
+
+    fireEvent.click(screen.getByText("New"));
+    await waitFor(() => {
+      expect(screen.getByText("Resolved")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("Resolved"));
+
+    expect(onStateChange).toHaveBeenCalledWith("Resolved");
+    expect(mockedUpdate).not.toHaveBeenCalled();
+  });
 });
