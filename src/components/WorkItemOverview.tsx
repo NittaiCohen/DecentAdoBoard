@@ -8,6 +8,7 @@ import StateSelector from "./StateSelector";
 import {
   ALWAYS_VISIBLE_OVERVIEW_FIELD_REFERENCES,
   getDefaultOverviewFieldSelection,
+  getOverviewFieldsForWorkItemType,
 } from "../config/overviewFields";
 import StateBadge from "./StateBadge";
 import { DEFAULT_TYPE_COLOR, TYPE_COLORS } from "../utils/workItemColors";
@@ -347,7 +348,10 @@ function OverviewContent({
   const [savedFields, setSavedFields] = useState<Record<string, JsonValue>>(overview.fields);
   const [draftFields, setDraftFields] = useState<Record<string, JsonValue>>(overview.fields);
 
-  const availableFields = overview.fieldDefinitions;
+  const availableFields = useMemo(
+    () => getOverviewFieldsForWorkItemType(overview.fieldDefinitions, overview.workItemType),
+    [overview.fieldDefinitions, overview.workItemType],
+  );
   const typeColorClass = TYPE_COLORS[overview.workItemType] ?? DEFAULT_TYPE_COLOR;
   const fieldsWithDefaults = useMemo(
     () =>

@@ -1,3 +1,5 @@
+import type { WorkItemType } from "../types";
+
 const DEFAULT_OVERVIEW_FIELD_REFERENCES = new Set([
   "Microsoft.VSTS.Common.AcceptanceCriteria",
   "Microsoft.VSTS.Common.Activity",
@@ -10,6 +12,7 @@ const DEFAULT_OVERVIEW_FIELD_REFERENCES = new Set([
   "Microsoft.VSTS.Common.StackRank",
   "Microsoft.VSTS.Common.StoryPoints",
   "Microsoft.VSTS.TCM.ReproSteps",
+  "Microsoft.VSTS.TCM.SystemInfo",
   "System.AreaPath",
   "System.Description",
   "System.History",
@@ -32,7 +35,14 @@ const DEFAULT_OVERVIEW_FIELD_NAMES = new Set([
   "severity",
   "stack rank",
   "story points",
+  "system info",
 ]);
+
+const EXCLUDED_OVERVIEW_FIELD_REFERENCES_BY_WORK_ITEM_TYPE: Partial<
+  Record<WorkItemType, ReadonlySet<string>>
+> = {
+  Bug: new Set(["System.Description"]),
+};
 
 export const ALWAYS_VISIBLE_OVERVIEW_FIELD_REFERENCES = new Set([
   "System.AssignedTo",
@@ -56,4 +66,19 @@ function isDefaultVisibleField(field: OverviewFieldReference): boolean {
 
 export function getDefaultOverviewFieldSelection(fields: OverviewFieldReference[]): string[] {
   return fields.filter(isDefaultVisibleField).map((field) => field.referenceName);
+}
+
+export function getOverviewFieldsForWorkItemType<T extends OverviewFieldReference>(
+  fields: T[],
+  workItemType: string,
+): T[] {
+  const excludedReferences = isKnownWorkItemType(workItemType)
+    ? (EXCLUDED_OVERVIEW_FIELD_REFERENCES_BY_WORK_ITEM_TYPE[workItemType] ?? new Set<string>())
+    : new Set<string>();
+
+  return fields.filter((field) => !excludedReferences.has(field.referenceName));
+}
+
+function isKnownWorkItemType(workItemType: string): workItemType is WorkItemType {
+  return workItemType in EXCLUDED_OVERVIEW_FIELD_REFERENCES_BY_WORK_ITEM_TYPE;
 }

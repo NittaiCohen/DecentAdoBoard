@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getDefaultOverviewFieldSelection } from "./overviewFields";
+import {
+  getDefaultOverviewFieldSelection,
+  getOverviewFieldsForWorkItemType,
+} from "./overviewFields";
 
 describe("getDefaultOverviewFieldSelection", () => {
   it("keeps only useful standard overview fields", () => {
@@ -51,6 +54,7 @@ describe("getDefaultOverviewFieldSelection", () => {
       "Stack Rank",
       "State",
       "Story Points",
+      "System Info",
       "Tags",
       "Title",
     ];
@@ -110,5 +114,24 @@ describe("getDefaultOverviewFieldSelection", () => {
         ["Assigned To", "State", "Tags", "Title"].includes(name) ? [] : [`Custom.Allowed${index}`],
       ),
     );
+  });
+});
+
+describe("getOverviewFieldsForWorkItemType", () => {
+  it("excludes Description from Bug overviews", () => {
+    const fields = [
+      { referenceName: "System.Description", name: "Description" },
+      { referenceName: "Microsoft.VSTS.TCM.ReproSteps", name: "Repro Steps" },
+    ];
+
+    expect(getOverviewFieldsForWorkItemType(fields, "Bug")).toEqual([
+      { referenceName: "Microsoft.VSTS.TCM.ReproSteps", name: "Repro Steps" },
+    ]);
+  });
+
+  it("keeps Description for other work item types", () => {
+    const fields = [{ referenceName: "System.Description", name: "Description" }];
+
+    expect(getOverviewFieldsForWorkItemType(fields, "Task")).toEqual(fields);
   });
 });
