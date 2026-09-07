@@ -368,13 +368,13 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
                   {"Loading Azure DevOps planning metadata..."}
                 </p>
               )}
-              {context && !context.azureOpenaiConfigured && (
+              {context && !context.aiReady && (
                 <div
                   role="alert"
                   className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300"
                 >
-                  <p className="font-semibold">{"Azure OpenAI is not configured"}</p>
-                  <p className="mt-1">{context.azureOpenaiConfigurationError}</p>
+                  <p className="font-semibold">{"AI is not available"}</p>
+                  <p className="mt-1">{context.aiError}</p>
                 </div>
               )}
               <label className="mt-5 block text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -407,7 +407,7 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
                 <button
                   type="button"
                   onClick={() => void handleGenerate()}
-                  disabled={isContextLoading || !context || !context.azureOpenaiConfigured}
+                  disabled={isContextLoading || !context || !context.aiReady}
                   className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-semibold text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 dark:focus:ring-offset-gray-900"
                 >
                   {"Generate preview"}

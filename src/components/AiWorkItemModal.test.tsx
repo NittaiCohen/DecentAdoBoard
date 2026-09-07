@@ -30,8 +30,9 @@ const mockContext: AiPlannerContext = {
   ],
   currentIterationPath: "Decent ADO Board\\Sprint 7",
   assignedTo: "Shoham Amar",
-  azureOpenaiConfigured: true,
-  azureOpenaiConfigurationError: null,
+  aiProvider: "azureOpenAi",
+  aiReady: true,
+  aiError: null,
 };
 
 const generatedPlan: GeneratedWorkItemPlan = {
@@ -221,16 +222,17 @@ describe("AiWorkItemModal", () => {
     expect(secondRequest.existingAdoIds).toEqual({ "task-1": 123 });
   });
 
-  it("shows missing Azure OpenAI configuration", async () => {
+  it("shows an actionable message when no AI backend is available", async () => {
     mocks.getAiPlannerContext.mockResolvedValue({
       ...mockContext,
-      azureOpenaiConfigured: false,
-      azureOpenaiConfigurationError:
-        "Environment variable DECENT_ADO_BOARD_AZURE_OPENAI_ENDPOINT is not configured",
+      aiProvider: null,
+      aiReady: false,
+      aiError: "Foundry Local is not running. Start it with: foundry service start",
     });
     renderModal();
 
-    expect(await screen.findByText("Azure OpenAI is not configured")).toBeTruthy();
+    expect(await screen.findByText("AI is not available")).toBeTruthy();
+    expect(screen.getByText(/foundry service start/)).toBeTruthy();
     expect(screen.getByText("Generate preview")).toHaveProperty("disabled", true);
   });
 

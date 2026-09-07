@@ -212,8 +212,9 @@ pub struct AiPlannerContext {
     pub iterations: Vec<Iteration>,
     pub current_iteration_path: Option<String>,
     pub assigned_to: String,
-    pub azure_openai_configured: bool,
-    pub azure_openai_configuration_error: Option<String>,
+    pub ai_provider: Option<String>,
+    pub ai_ready: bool,
+    pub ai_error: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]

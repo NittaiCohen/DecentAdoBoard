@@ -7,6 +7,7 @@ mod ai_planner;
 mod audit_log;
 mod auth;
 mod commands;
+mod foundry_local;
 mod models;
 mod state;
 

@@ -4,6 +4,7 @@ use tauri::State;
 
 use crate::ado_client::{check_response, fetch_iterations};
 use crate::auth::get_az_cli_resource_access_token;
+use crate::foundry_local;
 use crate::models::{
     AdoWorkItemTypeState, AiPlannerContext, AiWorkItemTypeMetadata, GenerateWorkItemPlanRequest,
     GeneratedWorkItemPlan, WorkItemTypeStatesResponse, WorkItemTypesResponse,
@@ -15,7 +16,23 @@ const AZURE_OPENAI_DEPLOYMENT_ENV: &str = "DECENT_ADO_BOARD_AZURE_OPENAI_DEPLOYM
 const AZURE_OPENAI_API_VERSION_ENV: &str = "DECENT_ADO_BOARD_AZURE_OPENAI_API_VERSION";
 const DEFAULT_AZURE_OPENAI_API_VERSION: &str = "2024-10-21";
 const AZURE_OPENAI_RESOURCE: &str = "https://cognitiveservices.azure.com/";
+const AI_PROVIDER_ENV: &str = "DECENT_ADO_BOARD_AI_PROVIDER";
 const PROPOSED_STATE_CATEGORY: &str = "Proposed";
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) enum AiProvider {
+    AzureOpenAi,
+    FoundryLocal,
+}
+
+impl AiProvider {
+    fn as_label(self) -> &'static str {
+        match self {
+            AiProvider::AzureOpenAi => "azureOpenAi",
+            AiProvider::FoundryLocal => "foundryLocal",
+        }
+    }
+}
 
 #[derive(Debug)]
 struct AzureOpenAiConfig {
@@ -165,26 +182,110 @@ async fn fetch_authenticated_identity(state: &AppState) -> Result<String, String
         .ok_or_else(|| "ADO did not return an authenticated user identity".to_string())
 }
 
-pub(crate) async fn planner_context(state: &AppState) -> Result<AiPlannerContext, String> {
+/// A backend that has already been resolved, carrying everything the transport needs so that
+/// discovery (which spawns a process and makes an HTTP call) happens exactly once per request.
+pub(crate) enum ResolvedAiBackend {
+    AzureOpenAi,
+    FoundryLocal(foundry_local::FoundryLocalConfig),
+}
+
+impl ResolvedAiBackend {
+    fn provider(&self) -> AiProvider {
+        match self {
+            ResolvedAiBackend::AzureOpenAi => AiProvider::AzureOpenAi,
+            ResolvedAiBackend::FoundryLocal(_) => AiProvider::FoundryLocal,
+        }
+    }
+}
+
+/// Resolves which backend to use. An explicit override wins; otherwise the cloud deployment is
+/// preferred for plan quality and Foundry Local is used as the no-approval fallback.
+async fn resolve_ai_backend(http_client: &reqwest::Client) -> Result<ResolvedAiBackend, String> {
+    let requested = std::env::var(AI_PROVIDER_ENV)
+        .ok()
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty());
+
+    match requested.as_deref() {
+        Some("azure-openai") => azure_openai_config().map(|_| ResolvedAiBackend::AzureOpenAi),
+        Some("foundry-local") => foundry_local::resolve_config(http_client)
+            .await
+            .map(ResolvedAiBackend::FoundryLocal),
+        Some(other) => Err(format!(
+            "Unknown {AI_PROVIDER_ENV} value '{other}'. Use 'azure-openai' or 'foundry-local'."
+        )),
+        None => {
+            if azure_openai_config().is_ok() {
+                return Ok(ResolvedAiBackend::AzureOpenAi);
+            }
+            match foundry_local::resolve_config(http_client).await {
+                Ok(config) => Ok(ResolvedAiBackend::FoundryLocal(config)),
+                Err(foundry_error) => Err(format!(
+                    "No AI backend is available. Azure OpenAI is not configured, and Foundry Local could not be used: {foundry_error}"
+                )),
+            }
+        }
+    }
+}
+
+/// Fetches only the ADO metadata the planner needs. Backend resolution is deliberately
+/// excluded so that paths which merely validate a plan never touch the AI runtime.
+async fn planner_metadata(state: &AppState) -> Result<AiPlannerContext, String> {
     let work_item_types = fetch_work_item_type_metadata(state).await?;
     let iterations = fetch_iterations(state).await?;
     let current_iteration_path = current_iteration_path(&iterations);
     let assigned_to = fetch_authenticated_identity(state).await?;
-    let configuration_error = azure_openai_config().err();
 
     Ok(AiPlannerContext {
         work_item_types,
         iterations,
         current_iteration_path,
         assigned_to,
-        azure_openai_configured: configuration_error.is_none(),
-        azure_openai_configuration_error: configuration_error,
+        ai_provider: None,
+        ai_ready: false,
+        ai_error: None,
     })
 }
 
+/// Builds the planner context and returns the backend resolved alongside it, so callers that
+/// need both never resolve twice and can never report one backend while using another.
+async fn planner_context_with_backend(
+    state: &AppState,
+) -> Result<(AiPlannerContext, Result<ResolvedAiBackend, String>), String> {
+    let mut context = planner_metadata(state).await?;
+    let backend = resolve_ai_backend(&state.http_client).await;
+
+    context.ai_provider = backend
+        .as_ref()
+        .ok()
+        .map(|backend| backend.provider().as_label().to_string());
+    context.ai_ready = backend.is_ok();
+    context.ai_error = backend.as_ref().err().cloned();
+    Ok((context, backend))
+}
+
+/// Metadata used to validate an already-generated plan. This intentionally reports no AI
+/// backend, because validation does not need one.
+pub(crate) async fn planner_validation_context(
+    state: &AppState,
+) -> Result<AiPlannerContext, String> {
+    planner_metadata(state).await
+}
+
+pub(crate) async fn planner_context(state: &AppState) -> Result<AiPlannerContext, String> {
+    planner_context_with_backend(state)
+        .await
+        .map(|(context, _)| context)
+}
+
 fn planner_system_prompt(context: &AiPlannerContext) -> Result<String, String> {
-    let metadata = serde_json::to_string(context)
-        .map_err(|error| format!("Failed to serialize ADO metadata: {error}"))?;
+    let metadata = serde_json::to_string(&serde_json::json!({
+        "workItemTypes": context.work_item_types,
+        "iterations": context.iterations,
+        "currentIterationPath": context.current_iteration_path,
+        "assignedTo": context.assigned_to,
+    }))
+    .map_err(|error| format!("Failed to serialize ADO metadata: {error}"))?;
     Ok(format!(
         r#"You are an Azure DevOps work-item planning assistant.
 Return one JSON object and no markdown. The object must have:
@@ -233,11 +334,11 @@ fn extract_json_content(content: &str) -> &str {
         .unwrap_or(trimmed)
 }
 
-async fn call_azure_openai(
+async fn request_azure_openai_completion(
     state: &AppState,
-    context: &AiPlannerContext,
-    request: &GenerateWorkItemPlanRequest,
-) -> Result<GeneratedWorkItemPlan, String> {
+    system_prompt: &str,
+    user_prompt: &str,
+) -> Result<String, String> {
     let config = azure_openai_config()?;
     let access_token = get_az_cli_resource_access_token(AZURE_OPENAI_RESOURCE).await?;
     let url = format!(
@@ -248,8 +349,8 @@ async fn call_azure_openai(
     );
     let body = serde_json::json!({
         "messages": [
-            {"role": "system", "content": planner_system_prompt(context)?},
-            {"role": "user", "content": planner_user_prompt(request)?}
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
         ],
         "temperature": 0.2,
         "response_format": {"type": "json_object"}
@@ -267,11 +368,40 @@ async fn call_azure_openai(
         .json()
         .await
         .map_err(|error| format!("Failed to parse Azure OpenAI response: {error}"))?;
-    let content = response_body["choices"][0]["message"]["content"]
+    response_body["choices"][0]["message"]["content"]
         .as_str()
-        .ok_or_else(|| "Azure OpenAI returned no message content".to_string())?;
-    serde_json::from_str(extract_json_content(content))
-        .map_err(|error| format!("Azure OpenAI returned an invalid work-item plan: {error}"))
+        .map(str::to_string)
+        .ok_or_else(|| "Azure OpenAI returned no message content".to_string())
+}
+
+/// Prompt construction, JSON extraction, and validation are shared by every backend so the
+/// provider only supplies transport.
+async fn generate_plan_with_backend(
+    state: &AppState,
+    backend: &ResolvedAiBackend,
+    context: &AiPlannerContext,
+    request: &GenerateWorkItemPlanRequest,
+) -> Result<GeneratedWorkItemPlan, String> {
+    let system_prompt = planner_system_prompt(context)?;
+    let user_prompt = planner_user_prompt(request)?;
+
+    let content = match backend {
+        ResolvedAiBackend::AzureOpenAi => {
+            request_azure_openai_completion(state, &system_prompt, &user_prompt).await?
+        }
+        ResolvedAiBackend::FoundryLocal(config) => {
+            foundry_local::generate_chat_completion(
+                &state.http_client,
+                config,
+                &system_prompt,
+                &user_prompt,
+            )
+            .await?
+        }
+    };
+
+    serde_json::from_str(extract_json_content(&content))
+        .map_err(|error| format!("The AI returned an invalid work-item plan: {error}"))
 }
 
 fn has_cycle(edges: &HashMap<String, Vec<String>>) -> bool {
@@ -417,8 +547,9 @@ pub async fn generate_work_item_plan(
     if request.mission.trim().is_empty() {
         return Err("Describe the mission before generating work items".to_string());
     }
-    let context = planner_context(&state).await?;
-    let plan = call_azure_openai(&state, &context, &request).await?;
+    let (context, backend) = planner_context_with_backend(&state).await?;
+    let backend = backend?;
+    let plan = generate_plan_with_backend(&state, &backend, &context, &request).await?;
     validate_plan(&plan, &context)?;
     Ok(plan)
 }
@@ -444,8 +575,9 @@ mod tests {
             }],
             current_iteration_path: Some("Project\\Current".to_string()),
             assigned_to: "user@example.com".to_string(),
-            azure_openai_configured: true,
-            azure_openai_configuration_error: None,
+            ai_provider: Some("azureOpenAi".to_string()),
+            ai_ready: true,
+            ai_error: None,
         }
     }
 

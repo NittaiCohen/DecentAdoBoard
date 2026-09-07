@@ -4,7 +4,7 @@ use sha2::{Digest, Sha256};
 use tauri::State;
 
 use crate::ado_client::check_response;
-use crate::ai_planner::{planner_context, validate_plan};
+use crate::ai_planner::{planner_validation_context, validate_plan};
 use crate::audit_log::AuditAction;
 use crate::models::{
     CreatedWorkItem, GeneratedWorkItem, JsonPatchOperation, SubmitWorkItemPlanRequest,
@@ -406,7 +406,7 @@ async fn submit_plan_impl(
     if request.submission_id.trim().is_empty() {
         return Err("Submission ID is required".to_string());
     }
-    let context = planner_context(state).await?;
+    let context = planner_validation_context(state).await?;
     validate_plan(&request.plan, &context)?;
     let mut submission_tags = HashSet::new();
     for item in &request.plan.items {

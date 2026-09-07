@@ -58,13 +58,31 @@ Start the Tauri development app:
 npm run tauri dev
 ```
 
-### Configure Azure OpenAI
+### Configure the AI Planner
 
-The AI Planner uses Microsoft Entra authentication through the Azure CLI. The signed-in identity
-must have access to an Azure OpenAI or Azure AI Foundry model deployment and the
-`Cognitive Services OpenAI User` role on the resource.
+The AI Planner supports two backends. The app picks one automatically: Azure OpenAI is preferred
+for plan quality, and Foundry Local is used as a fallback when no cloud deployment is configured.
 
-Set these environment variables before starting the app:
+#### Option 1: Foundry Local (no Azure subscription required)
+
+Runs a model on your own machine. Nothing is sent to the cloud, and no approvals, quota, or role
+assignments are needed.
+
+```powershell
+winget install Microsoft.FoundryLocal
+foundry model download phi-4
+foundry server start
+npm run tauri dev
+```
+
+The service port is assigned dynamically, so the app discovers the endpoint through
+`foundry server status` rather than assuming a fixed port.
+
+#### Option 2: Azure OpenAI (better plan quality)
+
+Uses Microsoft Entra authentication through the Azure CLI. The signed-in identity needs access to
+an Azure OpenAI or Azure AI Foundry model deployment and the `Cognitive Services OpenAI User` role
+on the resource.
 
 ```powershell
 $env:DECENT_ADO_BOARD_AZURE_OPENAI_ENDPOINT = "https://<resource-name>.openai.azure.com"
@@ -75,6 +93,17 @@ npm run tauri dev
 
 The app obtains a separate Azure OpenAI access token from `az`. No API key is stored in the
 frontend or repository.
+
+#### Optional overrides
+
+```powershell
+$env:DECENT_ADO_BOARD_AI_PROVIDER = "foundry-local"   # or "azure-openai" to force one backend
+$env:DECENT_ADO_BOARD_FOUNDRY_LOCAL_ENDPOINT = "http://localhost:52701"
+$env:DECENT_ADO_BOARD_FOUNDRY_LOCAL_MODEL = "phi-4"
+```
+
+If no backend is available, the rest of the board keeps working and the AI Planner explains what
+to install or configure.
 
 After signing in, select an Azure DevOps organization, project, and area path. The app then loads the board data for that selection.
 

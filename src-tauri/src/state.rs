@@ -75,11 +75,11 @@ impl AppState {
         use crate::auth::AuthSource;
 
         enum Action {
-            ReturnBasic(String),   // PAT — return Basic auth header
-            ReturnBearer(String),  // valid token — return as-is
-            RefreshAzCli,          // AzCli token expired — re-acquire
-            RefreshOAuth(String),  // OAuth token expired — use refresh_token
-            SessionExpired,        // OAuth token expired with no refresh_token
+            ReturnBasic(String),  // PAT — return Basic auth header
+            ReturnBearer(String), // valid token — return as-is
+            RefreshAzCli,         // AzCli token expired — re-acquire
+            RefreshOAuth(String), // OAuth token expired — use refresh_token
+            SessionExpired,       // OAuth token expired with no refresh_token
         }
 
         let action = {
@@ -109,8 +109,7 @@ impl AppState {
         match action {
             Action::ReturnBasic(pat) => {
                 use base64::Engine as _;
-                let encoded = base64::engine::general_purpose::STANDARD
-                    .encode(format!(":{pat}"));
+                let encoded = base64::engine::general_purpose::STANDARD.encode(format!(":{pat}"));
                 Ok(format!("Basic {encoded}"))
             }
             Action::ReturnBearer(token) => Ok(format!("Bearer {token}")),
@@ -125,7 +124,9 @@ impl AppState {
                 let new_tokens =
                     crate::auth::refresh_access_token(&self.http_client, &refresh_token)
                         .await
-                        .map_err(|e| format!("Token refresh failed. Please sign in again. ({e})"))?;
+                        .map_err(|e| {
+                            format!("Token refresh failed. Please sign in again. ({e})")
+                        })?;
                 let bearer = format!("Bearer {}", new_tokens.access_token);
                 *self.token.lock().await = Some(new_tokens);
                 self.save_tokens_to_disk().await;

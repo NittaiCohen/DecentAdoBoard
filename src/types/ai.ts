@@ -30,8 +30,9 @@ export interface AiPlannerContext {
   iterations: Iteration[];
   currentIterationPath: string | null;
   assignedTo: string;
-  azureOpenaiConfigured: boolean;
-  azureOpenaiConfigurationError: string | null;
+  aiProvider: string | null;
+  aiReady: boolean;
+  aiError: string | null;
 }
 
 export interface GenerateWorkItemPlanRequest {
