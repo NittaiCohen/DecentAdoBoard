@@ -5,6 +5,7 @@ import { TYPE_COLORS, DEFAULT_TYPE_COLOR } from "../utils/workItemColors";
 import AssignedToDisplay from "./AssignedToDisplay";
 import StateDropdown from "./StateDropdown";
 import WorkItemTitleButton from "./WorkItemTitleButton";
+import WorkItemTypeIcon from "./WorkItemTypeIcon";
 import type { BOARD_NODE_TYPES } from "../types/graph";
 
 export interface WorkItemNodeData extends Record<string, unknown> {
@@ -25,6 +26,7 @@ function WorkItemHeader({ data }: { data: WorkItemNodeData }) {
 
   return (
     <div className="flex items-center gap-1.5 mb-1">
+      <WorkItemTypeIcon workItemType={workItem.type} className="h-3.5 w-3.5 shrink-0" />
       <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">{`#${workItem.id}`}</span>
       <StateDropdown
         workItemId={workItem.id}

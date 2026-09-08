@@ -30,6 +30,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::set_config,
+            commands::get_board_work_item_types,
+            commands::get_work_item_type_icon,
             commands::set_pat,
             commands::login_az_cli,
             commands::get_board_data,
@@ -43,6 +45,9 @@ pub fn run() {
             commands::list_iteration_paths,
             commands::search_project_tags,
             commands::get_work_item_overview,
+            commands::get_work_item_type_fields,
+            commands::get_work_item_type_fields_batch,
+            commands::refresh_work_item_type_fields_batch,
             commands::get_work_item_comments,
             commands::add_work_item_comment,
             commands::search_identities,

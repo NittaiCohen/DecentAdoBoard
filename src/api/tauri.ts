@@ -2,12 +2,14 @@ import { invoke } from "@tauri-apps/api/core";
 import type {
   AccountInfo,
   BoardData,
+  BoardWorkItemType,
   IdentitySearchResult,
   ProjectInfo,
   ProjectTag,
   TeamInfo,
-  WorkItemFieldUpdate,
   WorkItemComment,
+  WorkItemFieldDefinition,
+  WorkItemFieldUpdate,
   WorkItemOverview,
   WorkItemTypeState,
 } from "../types";
@@ -18,7 +20,11 @@ export async function setConfig(
   project: string,
   areaPath: string,
 ): Promise<void> {
-  await invoke("set_config", { organization, project, areaPath });
+  await invoke("set_config", {
+    organization,
+    project,
+    areaPath,
+  });
 }
 
 /** Start Microsoft OAuth login in the Rust backend. */
@@ -89,9 +95,67 @@ export async function getBoardData(): Promise<BoardData> {
   return await invoke<BoardData>("get_board_data");
 }
 
+/** Fetch the work item types allowed by the selected board. */
+export async function getBoardWorkItemTypes(): Promise<BoardWorkItemType[]> {
+  return await invoke<BoardWorkItemType[]>("get_board_work_item_types");
+}
+
+/** Fetch an authenticated Azure DevOps work item type icon as a data URL. */
+export async function getWorkItemTypeIcon(iconId: string, color: string): Promise<string> {
+  return await invoke<string>("get_work_item_type_icon", { iconId, color });
+}
+
+/** Create a work item using a board-supported work item type. */
+export async function createWorkItem(
+  workItemType: string,
+  title: string,
+  description?: string,
+  iterationPath?: string,
+  additionalFields?: WorkItemFieldUpdate[],
+): Promise<number> {
+  return await invoke<number>("create_work_item", {
+    workItemType,
+    title,
+    description,
+    iterationPath,
+    additionalFields,
+  });
+}
+
 /** Fetch the complete field data and field metadata for a work item. */
 export async function getWorkItemOverview(workItemId: number): Promise<WorkItemOverview> {
   return await invoke<WorkItemOverview>("get_work_item_overview", { workItemId });
+}
+
+/** Fetch fields supported by a work item type for the create form. */
+export async function getWorkItemTypeFields(
+  workItemType: string,
+): Promise<WorkItemFieldDefinition[]> {
+  return await invoke<WorkItemFieldDefinition[]>("get_work_item_type_fields", { workItemType });
+}
+
+export interface WorkItemTypeFieldsBatchResult {
+  fieldDefinitionsByType: Record<string, WorkItemFieldDefinition[]>;
+  fromCache: boolean;
+}
+
+/** Fetch cached field definitions for several work item types in one backend request. */
+export async function getWorkItemTypeFieldsBatch(
+  workItemTypes: string[],
+): Promise<WorkItemTypeFieldsBatchResult> {
+  return await invoke<WorkItemTypeFieldsBatchResult>("get_work_item_type_fields_batch", {
+    workItemTypes,
+  });
+}
+
+/** Refresh and persist field definitions for several work item types. */
+export async function refreshWorkItemTypeFieldsBatch(
+  workItemTypes: string[],
+): Promise<Record<string, WorkItemFieldDefinition[]>> {
+  return await invoke<Record<string, WorkItemFieldDefinition[]>>(
+    "refresh_work_item_type_fields_batch",
+    { workItemTypes },
+  );
 }
 
 /** Fetch the first page of comments for a work item. */

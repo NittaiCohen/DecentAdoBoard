@@ -1,6 +1,7 @@
 use crate::models::*;
 use crate::state::AppState;
 use base64::Engine;
+use futures::stream::{self, StreamExt, TryStreamExt};
 
 const WORK_ITEM_BATCH_SIZE: usize = 200;
 const SPRINT_WINDOW: usize = 3; // sprints before and after current
@@ -269,7 +270,7 @@ pub async fn fetch_work_item_overview(
     let response = state
         .http_client
         .get(&item_url)
-        .header("Authorization", &auth)
+        .header("Authorization", auth)
         .send()
         .await
         .map_err(|e| format!("Work item overview request failed: {e}"))?;
@@ -288,15 +289,118 @@ pub async fn fetch_work_item_overview(
         .ok_or_else(|| "Work item overview has no work item type".to_string())?
         .to_string();
 
-    let encoded_work_item_type = urlencoding::encode(&work_item_type);
+    let field_definitions = fetch_work_item_type_fields(state, &work_item_type).await?;
+
+    Ok(WorkItemOverview {
+        id: work_item_id,
+        work_item_type,
+        fields: fields.into_iter().collect(),
+        field_definitions,
+    })
+}
+
+pub async fn fetch_work_item_type_fields(
+    state: &AppState,
+    work_item_type: &str,
+) -> Result<Vec<AdoWorkItemFieldDefinition>, String> {
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+    let field_types =
+        fetch_global_field_types(state, &config.organization, &config.project, &auth).await?;
+    let definition = fetch_work_item_type_definition(
+        state,
+        &config.organization,
+        &config.project,
+        &auth,
+        work_item_type,
+    )
+    .await?;
+
+    Ok(merge_field_metadata(definition, &field_types))
+}
+
+pub async fn fetch_work_item_type_fields_batch(
+    state: &AppState,
+    work_item_types: &[String],
+) -> Result<WorkItemTypeFieldsBatchResult, String> {
+    let config = state.get_config()?;
+    let cache_key = format!("{}/{}", config.organization, config.project);
+    if let Some(field_definitions_by_type) = state
+        .get_cached_work_item_fields(&cache_key, work_item_types)
+        .await
+    {
+        return Ok(WorkItemTypeFieldsBatchResult {
+            field_definitions_by_type,
+            from_cache: true,
+        });
+    }
+
+    let field_definitions_by_type =
+        refresh_work_item_type_fields_batch(state, work_item_types, &config, &cache_key).await?;
+    Ok(WorkItemTypeFieldsBatchResult {
+        field_definitions_by_type,
+        from_cache: false,
+    })
+}
+
+pub async fn refresh_work_item_type_fields_batch(
+    state: &AppState,
+    work_item_types: &[String],
+    config: &AdoConfig,
+    cache_key: &str,
+) -> Result<std::collections::HashMap<String, Vec<AdoWorkItemFieldDefinition>>, String> {
+    let auth = state.get_bearer_token().await?;
+    let field_types_future =
+        fetch_global_field_types(state, &config.organization, &config.project, &auth);
+    let definitions_future = stream::iter(work_item_types.iter().cloned())
+        .map(|work_item_type| async {
+            let definition = fetch_work_item_type_definition(
+                state,
+                &config.organization,
+                &config.project,
+                &auth,
+                &work_item_type,
+            )
+            .await?;
+            Ok::<_, String>((work_item_type, definition))
+        })
+        .buffer_unordered(8)
+        .try_collect::<Vec<_>>();
+    let (field_types, definitions) = tokio::join!(field_types_future, definitions_future);
+    let field_types = field_types?;
+    let definitions = definitions?;
+
+    let field_definitions_by_type = definitions
+        .into_iter()
+        .map(|(work_item_type, definition)| {
+            (
+                work_item_type,
+                merge_field_metadata(definition, &field_types),
+            )
+        })
+        .collect();
+    state
+        .save_work_item_fields(cache_key, &field_definitions_by_type)
+        .await?;
+    Ok(field_definitions_by_type)
+}
+
+async fn fetch_work_item_type_definition(
+    state: &AppState,
+    organization: &str,
+    project: &str,
+    auth: &str,
+    work_item_type: &str,
+) -> Result<Vec<AdoWorkItemFieldDefinition>, String> {
+    let encoded_work_item_type = urlencoding::encode(work_item_type);
     let definition_url = format!(
         "https://dev.azure.com/{}/{}/_apis/wit/workitemtypes/{}/fields?$expand=All&api-version=7.1",
-        config.organization, config.project, encoded_work_item_type
+        organization, project, encoded_work_item_type
     );
     let definition_response = state
         .http_client
         .get(&definition_url)
-        .header("Authorization", &auth)
+        .header("Authorization", auth)
         .send()
         .await
         .map_err(|e| format!("Work item field metadata request failed: {e}"))?;
@@ -306,15 +410,23 @@ pub async fn fetch_work_item_overview(
         .json()
         .await
         .map_err(|e| format!("Work item field metadata parse error: {e}"))?;
+    Ok(definition.value)
+}
 
+async fn fetch_global_field_types(
+    state: &AppState,
+    organization: &str,
+    project: &str,
+    auth: &str,
+) -> Result<std::collections::HashMap<String, (String, bool)>, String> {
     let fields_url = format!(
         "https://dev.azure.com/{}/{}/_apis/wit/fields?api-version=7.1",
-        config.organization, config.project
+        organization, project
     );
     let fields_response = state
         .http_client
         .get(&fields_url)
-        .header("Authorization", &auth)
+        .header("Authorization", auth)
         .send()
         .await
         .map_err(|e| format!("Work item fields metadata request failed: {e}"))?;
@@ -323,13 +435,18 @@ pub async fn fetch_work_item_overview(
         .json()
         .await
         .map_err(|e| format!("Work item fields metadata parse error: {e}"))?;
-    let field_types: std::collections::HashMap<_, _> = fields_metadata
+    Ok(fields_metadata
         .value
         .into_iter()
         .map(|field| (field.reference_name, (field.field_type, field.read_only)))
-        .collect();
-    let field_definitions = definition
-        .value
+        .collect())
+}
+
+fn merge_field_metadata(
+    field_definitions: Vec<AdoWorkItemFieldDefinition>,
+    field_types: &std::collections::HashMap<String, (String, bool)>,
+) -> Vec<AdoWorkItemFieldDefinition> {
+    field_definitions
         .into_iter()
         .map(|mut field| {
             if let Some((field_type, read_only)) = field_types.get(&field.reference_name) {
@@ -338,14 +455,7 @@ pub async fn fetch_work_item_overview(
             }
             field
         })
-        .collect();
-
-    Ok(WorkItemOverview {
-        id: work_item_id,
-        work_item_type,
-        fields: fields.into_iter().collect(),
-        field_definitions,
-    })
+        .collect()
 }
 
 pub async fn search_identities(
