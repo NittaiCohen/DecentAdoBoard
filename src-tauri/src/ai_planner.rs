@@ -450,27 +450,55 @@ fn normalize_plan_value(
         replace_null_with_string(item, "description", "");
         replace_null_with_string(item, "acceptanceCriteria", "");
         replace_null_with_string(item, "assignedTo", &context.assigned_to);
-        replace_null_with_string(
-            item,
-            "iterationPath",
-            context
-                .current_iteration_path
-                .as_deref()
-                .unwrap_or_default(),
-        );
 
-        let initial_state = item
+        let work_item_metadata = item
             .get("type")
             .and_then(serde_json::Value::as_str)
             .and_then(|work_item_type| {
                 context
                     .work_item_types
                     .iter()
-                    .find(|metadata| metadata.name == work_item_type)
+                    .find(|metadata| metadata.name.eq_ignore_ascii_case(work_item_type))
+            });
+        if let Some(metadata) = work_item_metadata {
+            item.insert(
+                "type".to_string(),
+                serde_json::Value::String(metadata.name.clone()),
+            );
+            let normalized_state = item
+                .get("state")
+                .and_then(serde_json::Value::as_str)
+                .and_then(|state| {
+                    metadata
+                        .states
+                        .iter()
+                        .find(|valid_state| valid_state.eq_ignore_ascii_case(state))
+                })
+                .cloned()
+                .unwrap_or_else(|| metadata.initial_state.clone());
+            item.insert(
+                "state".to_string(),
+                serde_json::Value::String(normalized_state),
+            );
+        }
+
+        let generated_iteration = item
+            .get("iterationPath")
+            .and_then(serde_json::Value::as_str);
+        let normalized_iteration = generated_iteration
+            .and_then(|iteration| {
+                context.iterations.iter().find(|valid_iteration| {
+                    valid_iteration.path.eq_ignore_ascii_case(iteration)
+                        || valid_iteration.name.eq_ignore_ascii_case(iteration)
+                })
             })
-            .map(|metadata| metadata.initial_state.as_str())
+            .map(|iteration| iteration.path.clone())
+            .or_else(|| context.current_iteration_path.clone())
             .unwrap_or_default();
-        replace_null_with_string(item, "state", initial_state);
+        item.insert(
+            "iterationPath".to_string(),
+            serde_json::Value::String(normalized_iteration),
+        );
 
         if item
             .get("dependencyTemporaryIds")
@@ -792,6 +820,49 @@ mod tests {
         assert_eq!(plan.items[0].iteration_path, "Project\\Current");
         assert_eq!(plan.items[0].assigned_to, "user@example.com");
         assert!(plan.items[0].dependency_temporary_ids.is_empty());
+        assert_eq!(validate_plan(&plan, &context()), Ok(()));
+    }
+
+    #[test]
+    fn normalizes_iteration_names_and_safe_metadata_values() {
+        let request = GenerateWorkItemPlanRequest {
+            mission: "Build a feature".to_string(),
+            refinement_request: None,
+            current_plan: None,
+        };
+        let response = r#"{
+            "mission": "Build a feature",
+            "items": [{
+                "temporaryId": "task-1",
+                "parentTemporaryId": null,
+                "type": "task",
+                "state": "active",
+                "title": "Implement feature",
+                "description": "",
+                "acceptanceCriteria": "",
+                "iterationPath": "Current",
+                "assignedTo": "user@example.com",
+                "dependencyTemporaryIds": []
+            }, {
+                "temporaryId": "task-2",
+                "parentTemporaryId": null,
+                "type": "Task",
+                "state": "invented state",
+                "title": "Test feature",
+                "description": "",
+                "acceptanceCriteria": "",
+                "iterationPath": "Iteration 1",
+                "assignedTo": "user@example.com",
+                "dependencyTemporaryIds": []
+            }]
+        }"#;
+
+        let plan = parse_generated_plan(response, &context(), &request).unwrap();
+        assert_eq!(plan.items[0].work_item_type, "Task");
+        assert_eq!(plan.items[0].state, "Active");
+        assert_eq!(plan.items[0].iteration_path, "Project\\Current");
+        assert_eq!(plan.items[1].state, "Proposed");
+        assert_eq!(plan.items[1].iteration_path, "Project\\Current");
         assert_eq!(validate_plan(&plan, &context()), Ok(()));
     }
 
