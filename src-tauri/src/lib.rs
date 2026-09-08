@@ -1,10 +1,13 @@
 #![deny(warnings)]
 
 mod ado_client;
+mod ado_creation;
 mod ado_writes;
+mod ai_planner;
 mod audit_log;
 mod auth;
 mod commands;
+mod foundry_local;
 mod models;
 mod state;
 
@@ -58,6 +61,9 @@ pub fn run() {
             ado_writes::get_work_item_type_states,
             ado_writes::add_dependency,
             ado_writes::remove_dependency,
+            ai_planner::get_ai_planner_context,
+            ai_planner::generate_work_item_plan,
+            ado_creation::submit_work_item_plan,
             commands::write_debug_log,
         ])
         .run(tauri::generate_context!())

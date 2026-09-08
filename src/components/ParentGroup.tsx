@@ -17,6 +17,8 @@ export interface ParentGroupData extends Record<string, unknown> {
   width: number;
   height: number;
   onToggleExpand?: (id: number) => void;
+  previewMode?: boolean;
+  onPreviewStateChange?: (workItemId: number, newState: string) => void;
   onOpenOverview?: (id: number) => void;
 }
 
@@ -52,11 +54,13 @@ function ParentGroupComponent({ data, positionAbsoluteX }: NodeProps<ParentGroup
       <Handle
         type="target"
         position={Position.Left}
+        isConnectable
         className="!bg-gray-500 dark:!bg-gray-400 !w-2 !h-2"
       />
       <Handle
         type="source"
         position={Position.Right}
+        isConnectable
         className="!bg-gray-500 dark:!bg-gray-400 !w-2 !h-2"
       />
 
@@ -70,11 +74,18 @@ function ParentGroupComponent({ data, positionAbsoluteX }: NodeProps<ParentGroup
         }}
       >
         <WorkItemTypeIcon workItemType={data.workItemType} className="h-3.5 w-3.5 shrink-0" />
-        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">{`#${data.workItemId}`}</span>
+        <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
+          {data.previewMode ? "Preview" : `#${data.workItemId}`}
+        </span>
         <StateDropdown
           workItemId={data.workItemId}
           workItemType={data.workItemType}
           currentState={data.state}
+          onStateChange={
+            data.onPreviewStateChange
+              ? (newState) => data.onPreviewStateChange?.(data.workItemId, newState)
+              : undefined
+          }
         />
         <WorkItemTitleButton
           onOpen={() => data.onOpenOverview?.(data.workItemId)}
