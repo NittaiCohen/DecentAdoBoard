@@ -295,6 +295,9 @@ Use only work-item types, states, and iteration paths from this ADO metadata:
 {metadata}
 
 Rules:
+- Every field is required. Never return null except for parentTemporaryId when an item has no parent.
+- Use an empty string for an unknown description or acceptanceCriteria.
+- Use an empty array for dependencyTemporaryIds when there are no dependencies.
 - Use the initialState for each type unless the user explicitly requests another valid state.
 - Use currentIterationPath unless the user explicitly requests another listed iteration.
 - Use assignedTo for generated items unless the user explicitly requests otherwise.
@@ -401,14 +404,121 @@ async fn request_completion(
 /// Asks the model to fix its own malformed output. Small on-device models frequently add prose
 /// or truncate JSON, and a single corrective attempt recovers most of those cases without
 /// making the user retype the mission.
-fn repair_prompt(previous_response: &str, parse_error: &str) -> String {
+fn repair_prompt(previous_response: &str, validation_error: &str) -> String {
     format!(
-        "Your previous response could not be parsed as the required JSON object.\n\
-         Parse error: {parse_error}\n\n\
+        "Your previous response could not be accepted as the required work-item plan.\n\
+         Error: {validation_error}\n\n\
          Previous response:\n{previous_response}\n\n\
          Reply with the corrected JSON object only. Do not include explanations, \
          markdown fences, or any text outside the JSON."
     )
+}
+
+fn replace_null_with_string(
+    object: &mut serde_json::Map<String, serde_json::Value>,
+    key: &str,
+    default: &str,
+) {
+    if object.get(key).is_none_or(serde_json::Value::is_null) {
+        object.insert(
+            key.to_string(),
+            serde_json::Value::String(default.to_string()),
+        );
+    }
+}
+
+fn normalize_plan_value(
+    value: &mut serde_json::Value,
+    context: &AiPlannerContext,
+    request: &GenerateWorkItemPlanRequest,
+) {
+    let Some(plan) = value.as_object_mut() else {
+        return;
+    };
+    replace_null_with_string(plan, "mission", request.mission.trim());
+
+    let Some(items) = plan
+        .get_mut("items")
+        .and_then(serde_json::Value::as_array_mut)
+    else {
+        return;
+    };
+    for item in items {
+        let Some(item) = item.as_object_mut() else {
+            continue;
+        };
+        replace_null_with_string(item, "description", "");
+        replace_null_with_string(item, "acceptanceCriteria", "");
+        replace_null_with_string(item, "assignedTo", &context.assigned_to);
+        replace_null_with_string(
+            item,
+            "iterationPath",
+            context
+                .current_iteration_path
+                .as_deref()
+                .unwrap_or_default(),
+        );
+
+        let initial_state = item
+            .get("type")
+            .and_then(serde_json::Value::as_str)
+            .and_then(|work_item_type| {
+                context
+                    .work_item_types
+                    .iter()
+                    .find(|metadata| metadata.name == work_item_type)
+            })
+            .map(|metadata| metadata.initial_state.as_str())
+            .unwrap_or_default();
+        replace_null_with_string(item, "state", initial_state);
+
+        if item
+            .get("dependencyTemporaryIds")
+            .is_none_or(serde_json::Value::is_null)
+        {
+            item.insert(
+                "dependencyTemporaryIds".to_string(),
+                serde_json::Value::Array(Vec::new()),
+            );
+        }
+    }
+}
+
+fn parse_generated_plan(
+    content: &str,
+    context: &AiPlannerContext,
+    request: &GenerateWorkItemPlanRequest,
+) -> Result<GeneratedWorkItemPlan, String> {
+    let mut value: serde_json::Value =
+        serde_json::from_str(extract_json_content(content)).map_err(|error| error.to_string())?;
+    normalize_plan_value(&mut value, context, request);
+    let mut plan: GeneratedWorkItemPlan =
+        serde_json::from_value(value).map_err(|error| error.to_string())?;
+    sanitize_plan_references(&mut plan);
+    Ok(plan)
+}
+
+fn sanitize_plan_references(plan: &mut GeneratedWorkItemPlan) {
+    let temporary_ids: HashSet<String> = plan
+        .items
+        .iter()
+        .map(|item| item.temporary_id.clone())
+        .collect();
+
+    for item in &mut plan.items {
+        if item.parent_temporary_id.as_ref().is_some_and(|parent_id| {
+            parent_id == &item.temporary_id || !temporary_ids.contains(parent_id)
+        }) {
+            item.parent_temporary_id = None;
+        }
+
+        let mut seen_dependencies = HashSet::new();
+        item.dependency_temporary_ids.retain(|dependency_id| {
+            dependency_id != &item.temporary_id
+                && temporary_ids.contains(dependency_id)
+                && seen_dependencies.insert(dependency_id.clone())
+        });
+    }
 }
 
 async fn generate_plan_with_backend(
@@ -421,21 +531,34 @@ async fn generate_plan_with_backend(
     let user_prompt = planner_user_prompt(request)?;
 
     let content = request_completion(state, backend, &system_prompt, &user_prompt).await?;
-    let parse_error = match serde_json::from_str(extract_json_content(&content)) {
-        Ok(plan) => return Ok(plan),
-        Err(error) => error.to_string(),
+    let first_error = match parse_generated_plan(&content, context, request) {
+        Ok(plan) => match validate_plan(&plan, context) {
+            Ok(()) => return Ok(plan),
+            Err(error) => error,
+        },
+        Err(error) => error,
     };
 
     let repaired = request_completion(
         state,
         backend,
         &system_prompt,
-        &repair_prompt(&content, &parse_error),
+        &repair_prompt(&content, &first_error),
     )
     .await?;
-    serde_json::from_str(extract_json_content(&repaired)).map_err(|error| {
-        format!("The AI returned an invalid work-item plan: {error}. Try rephrasing your mission, or use a larger model.")
-    })
+    let plan = parse_generated_plan(&repaired, context, request).map_err(|error| {
+        format!(
+            "The AI returned an invalid work-item plan: {error}. Try rephrasing your mission, \
+             or use a larger model."
+        )
+    })?;
+    validate_plan(&plan, context).map_err(|error| {
+        format!(
+            "The AI returned an invalid work-item plan: {error}. Try rephrasing your mission, \
+             or use a larger model."
+        )
+    })?;
+    Ok(plan)
 }
 
 fn has_cycle(edges: &HashMap<String, Vec<String>>) -> bool {
@@ -636,6 +759,97 @@ mod tests {
     #[test]
     fn validates_supported_plan() {
         assert_eq!(validate_plan(&valid_plan(), &context()), Ok(()));
+    }
+
+    #[test]
+    fn safely_defaults_nullable_local_model_fields() {
+        let request = GenerateWorkItemPlanRequest {
+            mission: "Build a feature".to_string(),
+            refinement_request: None,
+            current_plan: None,
+        };
+        let response = r#"{
+            "mission": null,
+            "items": [{
+                "temporaryId": "task-1",
+                "parentTemporaryId": null,
+                "type": "Task",
+                "state": null,
+                "title": "Implement feature",
+                "description": null,
+                "acceptanceCriteria": null,
+                "iterationPath": null,
+                "assignedTo": null,
+                "dependencyTemporaryIds": null
+            }]
+        }"#;
+
+        let plan = parse_generated_plan(response, &context(), &request).unwrap();
+        assert_eq!(plan.mission, "Build a feature");
+        assert_eq!(plan.items[0].state, "Proposed");
+        assert_eq!(plan.items[0].description, "");
+        assert_eq!(plan.items[0].acceptance_criteria, "");
+        assert_eq!(plan.items[0].iteration_path, "Project\\Current");
+        assert_eq!(plan.items[0].assigned_to, "user@example.com");
+        assert!(plan.items[0].dependency_temporary_ids.is_empty());
+        assert_eq!(validate_plan(&plan, &context()), Ok(()));
+    }
+
+    #[test]
+    fn keeps_identity_fields_strict() {
+        let request = GenerateWorkItemPlanRequest {
+            mission: "Build a feature".to_string(),
+            refinement_request: None,
+            current_plan: None,
+        };
+        let response = r#"{
+            "mission": "Build a feature",
+            "items": [{
+                "temporaryId": null,
+                "parentTemporaryId": null,
+                "type": "Task",
+                "state": "Proposed",
+                "title": "Implement feature",
+                "description": "",
+                "acceptanceCriteria": "",
+                "iterationPath": "Project\\Current",
+                "assignedTo": "user@example.com",
+                "dependencyTemporaryIds": []
+            }]
+        }"#;
+
+        assert!(parse_generated_plan(response, &context(), &request)
+            .unwrap_err()
+            .contains("expected a string"));
+    }
+
+    #[test]
+    fn removes_broken_ai_generated_references() {
+        let request = GenerateWorkItemPlanRequest {
+            mission: "Build a feature".to_string(),
+            refinement_request: None,
+            current_plan: None,
+        };
+        let response = r#"{
+            "mission": "Build a feature",
+            "items": [{
+                "temporaryId": "task-1",
+                "parentTemporaryId": "missing-parent",
+                "type": "Task",
+                "state": "Proposed",
+                "title": "Implement feature",
+                "description": "",
+                "acceptanceCriteria": "",
+                "iterationPath": "Project\\Current",
+                "assignedTo": "user@example.com",
+                "dependencyTemporaryIds": ["task-1", "missing-dependency"]
+            }]
+        }"#;
+
+        let plan = parse_generated_plan(response, &context(), &request).unwrap();
+        assert_eq!(plan.items[0].parent_temporary_id, None);
+        assert!(plan.items[0].dependency_temporary_ids.is_empty());
+        assert_eq!(validate_plan(&plan, &context()), Ok(()));
     }
 
     #[test]
