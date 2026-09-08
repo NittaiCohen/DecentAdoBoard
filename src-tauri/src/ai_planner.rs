@@ -151,6 +151,29 @@ fn current_iteration_path(iterations: &[crate::models::Iteration]) -> Option<Str
                     .as_deref()
                     .is_some_and(|finish| now.as_str() <= finish)
         })
+        .or_else(|| {
+            iterations
+                .iter()
+                .filter(|iteration| {
+                    iteration
+                        .start_date
+                        .as_deref()
+                        .is_some_and(|start| start > now.as_str())
+                })
+                .min_by_key(|iteration| iteration.start_date.as_deref())
+        })
+        .or_else(|| {
+            iterations
+                .iter()
+                .filter(|iteration| {
+                    iteration
+                        .finish_date
+                        .as_deref()
+                        .is_some_and(|finish| finish < now.as_str())
+                })
+                .max_by_key(|iteration| iteration.finish_date.as_deref())
+        })
+        .or_else(|| iterations.first())
         .map(|iteration| iteration.path.clone())
 }
 
@@ -494,6 +517,12 @@ fn normalize_plan_value(
             })
             .map(|iteration| iteration.path.clone())
             .or_else(|| context.current_iteration_path.clone())
+            .or_else(|| {
+                context
+                    .iterations
+                    .first()
+                    .map(|iteration| iteration.path.clone())
+            })
             .unwrap_or_default();
         item.insert(
             "iterationPath".to_string(),
@@ -790,6 +819,40 @@ mod tests {
     }
 
     #[test]
+    fn selects_a_real_iteration_when_none_is_current() {
+        let past = Iteration {
+            id: "past".to_string(),
+            name: "Past".to_string(),
+            path: "Project\\Past".to_string(),
+            start_date: Some("2020-01-01T00:00:00Z".to_string()),
+            finish_date: Some("2020-01-14T00:00:00Z".to_string()),
+        };
+        let recent_past = Iteration {
+            id: "recent".to_string(),
+            name: "Recent".to_string(),
+            path: "Project\\Recent".to_string(),
+            start_date: Some("2020-02-01T00:00:00Z".to_string()),
+            finish_date: Some("2020-02-14T00:00:00Z".to_string()),
+        };
+        assert_eq!(
+            current_iteration_path(&[past, recent_past]),
+            Some("Project\\Recent".to_string())
+        );
+
+        let undated = Iteration {
+            id: "undated".to_string(),
+            name: "Undated".to_string(),
+            path: "Project\\Undated".to_string(),
+            start_date: None,
+            finish_date: None,
+        };
+        assert_eq!(
+            current_iteration_path(&[undated]),
+            Some("Project\\Undated".to_string())
+        );
+    }
+
+    #[test]
     fn safely_defaults_nullable_local_model_fields() {
         let request = GenerateWorkItemPlanRequest {
             mission: "Build a feature".to_string(),
@@ -864,6 +927,36 @@ mod tests {
         assert_eq!(plan.items[1].state, "Proposed");
         assert_eq!(plan.items[1].iteration_path, "Project\\Current");
         assert_eq!(validate_plan(&plan, &context()), Ok(()));
+    }
+
+    #[test]
+    fn falls_back_to_an_available_iteration_when_context_has_no_current_one() {
+        let mut planner_context = context();
+        planner_context.current_iteration_path = None;
+        let request = GenerateWorkItemPlanRequest {
+            mission: "Build a feature".to_string(),
+            refinement_request: None,
+            current_plan: None,
+        };
+        let response = r#"{
+            "mission": "Build a feature",
+            "items": [{
+                "temporaryId": "task-1",
+                "parentTemporaryId": null,
+                "type": "Task",
+                "state": "Proposed",
+                "title": "Implement feature",
+                "description": "",
+                "acceptanceCriteria": "",
+                "iterationPath": "",
+                "assignedTo": "user@example.com",
+                "dependencyTemporaryIds": []
+            }]
+        }"#;
+
+        let plan = parse_generated_plan(response, &planner_context, &request).unwrap();
+        assert_eq!(plan.items[0].iteration_path, "Project\\Current");
+        assert_eq!(validate_plan(&plan, &planner_context), Ok(()));
     }
 
     #[test]
