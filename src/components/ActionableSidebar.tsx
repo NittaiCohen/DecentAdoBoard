@@ -1,15 +1,15 @@
 import type { BoardData, WorkItem } from "../types";
-import {
-  TYPE_COLORS,
-  DEFAULT_TYPE_COLOR,
-} from "../utils/workItemColors";
+import { TYPE_COLORS, DEFAULT_TYPE_COLOR } from "../utils/workItemColors";
+import AssignedToDisplay from "./AssignedToDisplay";
 import { computeActionableSet } from "../utils/actionable";
 import StateDropdown from "./StateDropdown";
+import WorkItemTitleButton from "./WorkItemTitleButton";
 
 interface ActionableSidebarProps {
   isOpen: boolean;
   onToggle: () => void;
   boardData?: BoardData;
+  onOpenOverview: (workItemId: number) => void;
 }
 
 interface ActionableNode {
@@ -127,7 +127,15 @@ function buildActionableTree(boardData?: BoardData): ActionableNode[] {
   return topLevel;
 }
 
-function ActionableNodeCard({ node, depth }: { node: ActionableNode; depth: number }) {
+function ActionableNodeCard({
+  node,
+  depth,
+  onOpenOverview,
+}: {
+  node: ActionableNode;
+  depth: number;
+  onOpenOverview: (workItemId: number) => void;
+}) {
   const colorClass = TYPE_COLORS[node.workItem.type] ?? DEFAULT_TYPE_COLOR;
   const compact = depth > 0;
   const padding = compact ? "px-2 py-1.5" : "p-3";
@@ -149,21 +157,23 @@ function ActionableNodeCard({ node, depth }: { node: ActionableNode; depth: numb
           </span>
         )}
       </div>
-      <p
-        className={`text-gray-900 dark:text-gray-100 leading-tight line-clamp-2 ${compact ? "text-xs" : "text-sm"}`}
+      <WorkItemTitleButton
+        onOpen={() => onOpenOverview(node.workItem.id)}
         title={node.workItem.title}
+        className={`block w-full p-0 text-left text-gray-900 hover:underline dark:text-gray-100 leading-tight line-clamp-2 ${compact ? "text-xs" : "text-sm"}`}
       >
         {node.workItem.title}
-      </p>
-      {node.workItem.assigned_to && (
-        <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 truncate">
-          {node.workItem.assigned_to}
-        </p>
-      )}
+      </WorkItemTitleButton>
+      <AssignedToDisplay value={node.workItem.assigned_to} />
       {node.children.length > 0 && (
         <div className="space-y-1.5 mt-2 ml-1">
           {node.children.map((child) => (
-            <ActionableNodeCard key={child.workItem.id} node={child} depth={depth + 1} />
+            <ActionableNodeCard
+              key={child.workItem.id}
+              node={child}
+              depth={depth + 1}
+              onOpenOverview={onOpenOverview}
+            />
           ))}
         </div>
       )}
@@ -171,7 +181,12 @@ function ActionableNodeCard({ node, depth }: { node: ActionableNode; depth: numb
   );
 }
 
-export default function ActionableSidebar({ isOpen, onToggle, boardData }: ActionableSidebarProps) {
+export default function ActionableSidebar({
+  isOpen,
+  onToggle,
+  boardData,
+  onOpenOverview,
+}: ActionableSidebarProps) {
   const tree = buildActionableTree(boardData);
   const totalCount = countLeafItems(tree);
 
@@ -201,7 +216,12 @@ export default function ActionableSidebar({ isOpen, onToggle, boardData }: Actio
           ) : (
             <div className="space-y-2">
               {tree.map((node) => (
-                <ActionableNodeCard key={node.workItem.id} node={node} depth={0} />
+                <ActionableNodeCard
+                  key={node.workItem.id}
+                  node={node}
+                  depth={0}
+                  onOpenOverview={onOpenOverview}
+                />
               ))}
             </div>
           )}

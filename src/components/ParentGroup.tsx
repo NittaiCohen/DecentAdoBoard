@@ -2,6 +2,8 @@ import { memo } from "react";
 import { Handle, Position, useStore, type NodeProps, type Node } from "@xyflow/react";
 
 import StateDropdown from "./StateDropdown";
+import WorkItemTitleButton from "./WorkItemTitleButton";
+import { DEFAULT_PARENT_GROUP_TYPE_COLOR, PARENT_GROUP_TYPE_COLORS } from "../utils/workItemColors";
 import type { BOARD_NODE_TYPES } from "../types/graph";
 
 export interface ParentGroupData extends Record<string, unknown> {
@@ -16,24 +18,10 @@ export interface ParentGroupData extends Record<string, unknown> {
   onToggleExpand?: (id: number) => void;
   previewMode?: boolean;
   onPreviewStateChange?: (workItemId: number, newState: string) => void;
+  onOpenOverview?: (id: number) => void;
 }
 
 export type ParentGroupNode = Node<ParentGroupData, typeof BOARD_NODE_TYPES.parentGroup>;
-
-const TYPE_COLORS: Record<string, string> = {
-  Bug: "border-red-400/60 dark:border-red-600/60 border-l-red-500 bg-red-100/30 dark:bg-red-950/30",
-  Task: "border-yellow-400/60 dark:border-yellow-600/60 border-l-yellow-500 bg-yellow-100/30 dark:bg-yellow-950/30",
-  "User Story":
-    "border-blue-400/60 dark:border-blue-600/60 border-l-blue-500 bg-blue-100/30 dark:bg-blue-950/30",
-  Feature:
-    "border-purple-400/60 dark:border-purple-600/60 border-l-purple-500 bg-purple-100/30 dark:bg-purple-950/30",
-  Epic: "border-orange-400/60 dark:border-orange-600/60 border-l-orange-500 bg-orange-100/30 dark:bg-orange-950/30",
-  "Product Backlog Item":
-    "border-blue-400/60 dark:border-blue-600/60 border-l-blue-500 bg-blue-100/30 dark:bg-blue-950/30",
-};
-
-const DEFAULT_COLORS =
-  "border-gray-400/60 dark:border-gray-600/60 border-l-gray-500 bg-gray-100/30 dark:bg-gray-800/30";
 
 /** Minimum header width that must remain visible when offset is applied. */
 const MIN_VISIBLE_HEADER_WIDTH = 200;
@@ -45,7 +33,7 @@ const HEADER_SLIDE_DURATION_S = 0.15;
 const viewportSelector = (s: { transform: [number, number, number] }) => s.transform;
 
 function ParentGroupComponent({ data, positionAbsoluteX }: NodeProps<ParentGroupNode>) {
-  const colorClass = TYPE_COLORS[data.workItemType] ?? DEFAULT_COLORS;
+  const colorClass = PARENT_GROUP_TYPE_COLORS[data.workItemType] ?? DEFAULT_PARENT_GROUP_TYPE_COLOR;
 
   const [viewX, , zoom] = useStore(viewportSelector);
 
@@ -97,12 +85,13 @@ function ParentGroupComponent({ data, positionAbsoluteX }: NodeProps<ParentGroup
               : undefined
           }
         />
-        <span
-          className="text-xs text-gray-900 dark:text-gray-100 truncate flex-1"
+        <WorkItemTitleButton
+          onOpen={() => data.onOpenOverview?.(data.workItemId)}
           title={data.label}
+          className="flex-1 truncate text-left text-xs text-gray-900 hover:underline dark:text-gray-100"
         >
           {data.label}
-        </span>
+        </WorkItemTitleButton>
         <button
           onClick={(e) => {
             e.stopPropagation();

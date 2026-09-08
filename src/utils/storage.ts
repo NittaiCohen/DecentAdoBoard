@@ -2,6 +2,7 @@ import { isObject } from "lodash-es";
 import { isNonEmptyString } from "./typeGuards";
 
 const CONFIG_STORAGE_KEY = "ado-config";
+const OVERVIEW_FIELDS_STORAGE_KEY = "ado-overview-fields";
 
 interface SavedConfig {
   organization: string;
@@ -47,4 +48,29 @@ export function saveConfig(config: SavedConfig) {
 /** Remove the saved project configuration from localStorage. */
 export function clearConfig() {
   localStorage.removeItem(CONFIG_STORAGE_KEY);
+}
+
+/** Retrieve the user's global work item overview field selection. */
+export function getOverviewFieldSelection(): string[] | null {
+  try {
+    const saved = localStorage.getItem(OVERVIEW_FIELDS_STORAGE_KEY);
+    if (!saved) {
+      return null;
+    }
+    const parsed: unknown = JSON.parse(saved);
+    if (
+      Array.isArray(parsed) &&
+      parsed.every((value): value is string => typeof value === "string")
+    ) {
+      return parsed;
+    }
+  } catch {
+    /* ignore invalid JSON */
+  }
+  return null;
+}
+
+/** Persist the user's global work item overview field selection. */
+export function saveOverviewFieldSelection(referenceNames: string[]): void {
+  localStorage.setItem(OVERVIEW_FIELDS_STORAGE_KEY, JSON.stringify(referenceNames));
 }

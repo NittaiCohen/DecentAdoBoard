@@ -124,13 +124,14 @@ export default function ComboBox({
       closeDropdown();
     } else {
       setOpen(true);
-      setFilter("");
+      setFilter(value);
       inputRef.current?.focus();
     }
   }
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFilter(e.target.value);
+    onChange(e.target.value);
     if (!open) {
       setOpen(true);
     }
@@ -138,7 +139,7 @@ export default function ComboBox({
 
   const handleInputFocus = () => {
     setOpen(true);
-    setFilter("");
+    setFilter(value);
   };
 
   function handleSelect(opt: string) {

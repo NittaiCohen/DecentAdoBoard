@@ -48,6 +48,62 @@ pub struct AdoIdentityRef {
     pub display_name: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IdentitySearchResult {
+    #[serde(rename = "displayName")]
+    pub display_name: String,
+    #[serde(rename = "uniqueName")]
+    pub unique_name: String,
+    #[serde(rename = "avatarDataUrl")]
+    pub avatar_data_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ProjectTagsResponse {
+    pub value: Vec<ProjectTag>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProjectTag {
+    pub name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WorkItemCommentsResponse {
+    pub comments: Vec<AdoComment>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct WorkItemComment {
+    pub id: i64,
+    pub text: String,
+    #[serde(rename = "renderedText")]
+    pub rendered_text: Option<String>,
+    #[serde(rename = "createdBy")]
+    pub created_by: String,
+    #[serde(rename = "createdDate")]
+    pub created_date: String,
+    #[serde(rename = "isDeleted")]
+    #[serde(default)]
+    pub is_deleted: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AdoComment {
+    #[serde(alias = "commentId")]
+    pub id: i64,
+    pub text: String,
+    #[serde(rename = "renderedText")]
+    pub rendered_text: Option<String>,
+    #[serde(rename = "createdBy")]
+    pub created_by: Option<AdoIdentityRef>,
+    #[serde(rename = "createdDate")]
+    pub created_date: String,
+    #[serde(rename = "isDeleted")]
+    #[serde(default)]
+    pub is_deleted: bool,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct AdoRelation {
     pub rel: String,
@@ -144,6 +200,47 @@ pub struct WorkItemTypeDefinition {
 pub struct WorkItemTypeField {
     #[serde(rename = "referenceName")]
     pub reference_name: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AdoWorkItemTypeFieldsResponse {
+    pub value: Vec<AdoWorkItemFieldDefinition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AdoWorkItemFieldDefinition {
+    #[serde(rename = "referenceName")]
+    pub reference_name: String,
+    pub name: String,
+    #[serde(rename = "fieldType", alias = "type", default = "default_field_type")]
+    pub field_type: String,
+    #[serde(rename = "readOnly", default)]
+    pub read_only: bool,
+    #[serde(rename = "alwaysRequired", default)]
+    pub always_required: bool,
+    #[serde(rename = "allowedValues", default)]
+    pub allowed_values: Vec<serde_json::Value>,
+}
+
+fn default_field_type() -> String {
+    "string".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkItemOverview {
+    pub id: i64,
+    #[serde(rename = "workItemType")]
+    pub work_item_type: String,
+    pub fields: std::collections::HashMap<String, serde_json::Value>,
+    #[serde(rename = "fieldDefinitions")]
+    pub field_definitions: Vec<AdoWorkItemFieldDefinition>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkItemFieldUpdate {
+    #[serde(rename = "referenceName")]
+    pub reference_name: String,
+    pub value: serde_json::Value,
 }
 
 // --- ADO work item PATCH body types ---
@@ -356,6 +453,35 @@ mod tests {
     }
 
     #[test]
+    fn ado_comments_response_deserializes() {
+        let response: WorkItemCommentsResponse = serde_json::from_value(json!({
+            "comments": [{
+                "workItemId": 123,
+                "id": 45,
+                "version": 1,
+                "text": "A comment",
+                "renderedText": "<p>A comment</p>",
+                "createdBy": {
+                    "displayName": "Ada Lovelace"
+                },
+                "createdDate": "2026-09-07T12:00:00Z",
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(response.comments.len(), 1);
+        assert_eq!(response.comments[0].id, 45);
+        assert_eq!(
+            response.comments[0]
+                .created_by
+                .as_ref()
+                .unwrap()
+                .display_name,
+            "Ada Lovelace"
+        );
+    }
+
+    #[test]
     fn wiql_response_deserializes() {
         let response: WiqlResponse = serde_json::from_value(json!({
             "workItems": [{ "id": 1 }, { "id": 2 }]
@@ -394,6 +520,28 @@ mod tests {
             relation.url,
             "https://dev.azure.com/org/project/_apis/wit/workItems/77"
         );
+    }
+
+    #[test]
+    fn work_item_type_fields_response_deserializes_value_array() {
+        let response: AdoWorkItemTypeFieldsResponse = serde_json::from_value(json!({
+            "count": 1,
+            "value": [{
+                "referenceName": "System.Title",
+                "name": "Title",
+                "alwaysRequired": true,
+                "allowedValues": []
+            }]
+        }))
+        .unwrap();
+
+        assert_eq!(response.value.len(), 1);
+        assert_eq!(response.value[0].reference_name, "System.Title");
+        assert_eq!(response.value[0].field_type, "string");
+
+        let serialized = serde_json::to_value(&response.value[0]).unwrap();
+        assert_eq!(serialized["fieldType"], "string");
+        assert!(serialized.get("field_type").is_none());
     }
 
     #[test]

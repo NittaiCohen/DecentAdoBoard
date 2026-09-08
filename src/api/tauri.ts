@@ -5,10 +5,15 @@ import type {
   BoardData,
   GeneratedWorkItemPlan,
   GenerateWorkItemPlanRequest,
+  IdentitySearchResult,
   ProjectInfo,
+  ProjectTag,
   SubmitWorkItemPlanRequest,
   SubmitWorkItemPlanResult,
   TeamInfo,
+  WorkItemComment,
+  WorkItemFieldUpdate,
+  WorkItemOverview,
   WorkItemTypeState,
 } from "../types";
 
@@ -66,9 +71,42 @@ export async function listAreaPaths(organization: string, project: string): Prom
   return await invoke<string[]>("list_area_paths", { organization, project });
 }
 
+/** Fetch all iteration paths in a project from the Rust backend. */
+export async function listIterationPaths(organization: string, project: string): Promise<string[]> {
+  return await invoke<string[]>("list_iteration_paths", { organization, project });
+}
+
+/** Search project tags for work item tag autocomplete. */
+export async function searchProjectTags(
+  organization: string,
+  project: string,
+  searchText: string,
+): Promise<ProjectTag[]> {
+  return await invoke<ProjectTag[]>("search_project_tags", {
+    organization,
+    project,
+    searchText,
+  });
+}
+
 /** Fetch the full board data (work items + iterations) from the Rust backend. */
 export async function getBoardData(): Promise<BoardData> {
   return await invoke<BoardData>("get_board_data");
+}
+
+/** Fetch the complete field data and field metadata for a work item. */
+export async function getWorkItemOverview(workItemId: number): Promise<WorkItemOverview> {
+  return await invoke<WorkItemOverview>("get_work_item_overview", { workItemId });
+}
+
+/** Fetch the first page of comments for a work item. */
+export async function getWorkItemComments(workItemId: number): Promise<WorkItemComment[]> {
+  return await invoke<WorkItemComment[]>("get_work_item_comments", { workItemId });
+}
+
+/** Add an HTML-formatted comment to a work item. */
+export async function addWorkItemComment(workItemId: number, text: string): Promise<void> {
+  await invoke("add_work_item_comment", { workItemId, text });
 }
 
 /** Update a work item's state in ADO. */
@@ -84,9 +122,22 @@ export async function updateWorkItemIteration(
   await invoke("update_work_item_iteration", { workItemId, newIterationPath });
 }
 
+/** Update one or more editable Azure DevOps fields. */
+export async function updateWorkItemFields(
+  workItemId: number,
+  updates: WorkItemFieldUpdate[],
+): Promise<void> {
+  await invoke("update_work_item_fields", { workItemId, updates });
+}
+
 /** Fetch valid states for a work item type from ADO. */
 export async function getWorkItemTypeStates(workItemType: string): Promise<WorkItemTypeState[]> {
   return await invoke<WorkItemTypeState[]>("get_work_item_type_states", { workItemType });
+}
+
+/** Search Azure DevOps identities for assigning a work item. */
+export async function searchIdentities(searchText: string): Promise<IdentitySearchResult[]> {
+  return await invoke<IdentitySearchResult[]>("search_identities", { searchText });
 }
 
 /** Write debug data to a JSON file in the app data directory. Returns the file path written. */

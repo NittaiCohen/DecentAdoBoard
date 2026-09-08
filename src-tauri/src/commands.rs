@@ -5,6 +5,9 @@ use crate::auth;
 use crate::models::*;
 use crate::state::AppState;
 
+const MAX_PROJECT_TAG_SEARCH_RESULTS: usize = 50;
+const MAX_COMMENT_PARSE_ERROR_BODY_LENGTH: usize = 8_000;
+
 #[tauri::command]
 pub async fn set_config(
     state: State<'_, AppState>,
@@ -35,6 +38,106 @@ pub async fn get_board_data(state: State<'_, AppState>) -> Result<BoardData, Str
         work_items,
         iterations,
     })
+}
+
+#[tauri::command]
+pub async fn get_work_item_overview(
+    state: State<'_, AppState>,
+    work_item_id: i64,
+) -> Result<WorkItemOverview, String> {
+    ado_client::fetch_work_item_overview(&state, work_item_id).await
+}
+
+#[tauri::command]
+pub async fn get_work_item_comments(
+    state: State<'_, AppState>,
+    work_item_id: i64,
+) -> Result<Vec<WorkItemComment>, String> {
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workItems/{}/comments?$expand=renderedText&order=desc&api-version=7.1-preview.4",
+        config.organization, config.project, work_item_id
+    );
+
+    let response = state
+        .http_client
+        .get(&url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("Work item comments request failed: {e}"))?;
+    let response = ado_client::check_response(response, "Work item comments").await?;
+    let response_body = response
+        .text()
+        .await
+        .map_err(|e| format!("Work item comments response read error: {e}"))?;
+    let data: WorkItemCommentsResponse = serde_json::from_str(&response_body)
+        .map_err(|e| {
+            let response_preview: String = response_body
+                .chars()
+                .take(MAX_COMMENT_PARSE_ERROR_BODY_LENGTH)
+                .collect();
+            let truncation_suffix = if response_body.chars().count() > MAX_COMMENT_PARSE_ERROR_BODY_LENGTH {
+                "... [response truncated]"
+            } else {
+                ""
+            };
+
+            format!(
+                "Work item comments response parse error: {e}; response body: {response_preview}{truncation_suffix}"
+            )
+        })?;
+
+    Ok(data
+        .comments
+        .into_iter()
+        .map(|comment| WorkItemComment {
+            id: comment.id,
+            text: comment.text,
+            rendered_text: comment.rendered_text,
+            created_by: comment
+                .created_by
+                .map(|identity| identity.display_name)
+                .unwrap_or_else(|| "Unknown user".to_string()),
+            created_date: comment.created_date,
+            is_deleted: comment.is_deleted,
+        })
+        .collect())
+}
+
+#[tauri::command]
+pub async fn add_work_item_comment(
+    state: State<'_, AppState>,
+    work_item_id: i64,
+    text: String,
+) -> Result<(), String> {
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workItems/{}/comments?format=html&api-version=7.1-preview.4",
+        config.organization, config.project, work_item_id
+    );
+
+    let response = state
+        .http_client
+        .post(&url)
+        .header("Authorization", &auth)
+        .json(&serde_json::json!({ "text": text }))
+        .send()
+        .await
+        .map_err(|e| format!("Add work item comment request failed: {e}"))?;
+    ado_client::check_response(response, "Add work item comment").await?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn search_identities(
+    state: State<'_, AppState>,
+    search_text: String,
+) -> Result<Vec<IdentitySearchResult>, String> {
+    ado_client::search_identities(&state, &search_text).await
 }
 
 fn parse_and_sort_accounts(resp_text: &str) -> Result<Vec<AccountInfo>, String> {
@@ -254,6 +357,73 @@ pub async fn list_area_paths(
     let mut paths = Vec::new();
     flatten_area_paths(&data, "", &mut paths);
     Ok(paths)
+}
+
+#[tauri::command]
+pub async fn list_iteration_paths(
+    state: State<'_, AppState>,
+    organization: String,
+    project: String,
+) -> Result<Vec<String>, String> {
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/classificationnodes/Iterations?$depth=10&api-version=7.1",
+        organization, project
+    );
+
+    let resp = state
+        .http_client
+        .get(&url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("Iteration paths request failed: {e}"))?;
+
+    let resp = crate::ado_client::check_response(resp, "Iteration paths").await?;
+    let data: ClassificationNodeResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Iteration paths parse error: {e}"))?;
+
+    let mut paths = Vec::new();
+    flatten_area_paths(&data, "", &mut paths);
+    Ok(paths)
+}
+
+#[tauri::command]
+pub async fn search_project_tags(
+    state: State<'_, AppState>,
+    organization: String,
+    project: String,
+    search_text: String,
+) -> Result<Vec<ProjectTag>, String> {
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/tags?api-version=7.1-preview.1",
+        organization, project
+    );
+
+    let resp = state
+        .http_client
+        .get(&url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("Project tags request failed: {e}"))?;
+
+    let resp = crate::ado_client::check_response(resp, "Project tags").await?;
+    let data: ProjectTagsResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Project tags parse error: {e}"))?;
+
+    let normalized_search_text = search_text.trim().to_lowercase();
+    Ok(data
+        .value
+        .into_iter()
+        .filter(|tag| tag.name.to_lowercase().contains(&normalized_search_text))
+        .take(MAX_PROJECT_TAG_SEARCH_RESULTS)
+        .collect())
 }
 
 fn flatten_area_paths(node: &ClassificationNodeResponse, prefix: &str, paths: &mut Vec<String>) {

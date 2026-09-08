@@ -2,7 +2,9 @@ use tauri::State;
 
 use crate::ado_client::check_response;
 use crate::audit_log::AuditAction;
-use crate::models::{AdoWorkItemTypeState, JsonPatchOperation, WorkItemTypeStatesResponse};
+use crate::models::{
+    AdoWorkItemTypeState, JsonPatchOperation, WorkItemFieldUpdate, WorkItemTypeStatesResponse,
+};
 use crate::state::AppState;
 
 /// Fetch the current state of a work item from ADO.
@@ -196,6 +198,57 @@ fn urlencoding_path(value: &str) -> String {
     value.replace(' ', "%20").replace('/', "%2F")
 }
 
+fn escape_json_pointer_segment(value: &str) -> String {
+    value.replace('~', "~0").replace('/', "~1")
+}
+
+fn create_field_update_patch(updates: &[WorkItemFieldUpdate]) -> Vec<JsonPatchOperation> {
+    updates
+        .iter()
+        .map(|update| JsonPatchOperation {
+            // ADO accepts `add` for both absent and existing fields. `replace` fails when an
+            // optional field such as Description has never been set on the work item.
+            op: "add".to_string(),
+            path: format!(
+                "/fields/{}",
+                escape_json_pointer_segment(&update.reference_name)
+            ),
+            value: update.value.clone(),
+        })
+        .collect()
+}
+
+async fn update_fields_impl(
+    state: &AppState,
+    work_item_id: i64,
+    updates: &[WorkItemFieldUpdate],
+) -> Result<(), String> {
+    if updates.is_empty() {
+        return Err("At least one work item field update is required".to_string());
+    }
+
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workitems/{}?api-version=7.1",
+        config.organization, config.project, work_item_id
+    );
+    let patch_body = create_field_update_patch(updates);
+
+    let response = state
+        .http_client
+        .patch(&url)
+        .header("Authorization", &auth)
+        .header("Content-Type", "application/json-patch+json")
+        .json(&patch_body)
+        .send()
+        .await
+        .map_err(|e| format!("Failed to update work item fields: {e}"))?;
+
+    check_response(response, "Update work item fields").await?;
+    Ok(())
+}
+
 // --- Tauri commands ---
 
 #[tauri::command]
@@ -214,6 +267,15 @@ pub async fn update_work_item_iteration(
     new_iteration_path: String,
 ) -> Result<(), String> {
     update_iteration_impl(&state, work_item_id, &new_iteration_path).await
+}
+
+#[tauri::command]
+pub async fn update_work_item_fields(
+    state: State<'_, AppState>,
+    work_item_id: i64,
+    updates: Vec<WorkItemFieldUpdate>,
+) -> Result<(), String> {
+    update_fields_impl(&state, work_item_id, &updates).await
 }
 
 #[tauri::command]
@@ -401,5 +463,16 @@ mod tests {
             urlencoding_path("Product Backlog Item"),
             "Product%20Backlog%20Item"
         );
+    }
+
+    #[test]
+    fn field_updates_use_add_for_absent_and_existing_fields() {
+        let patch = create_field_update_patch(&[WorkItemFieldUpdate {
+            reference_name: "Custom.Field/Name".to_string(),
+            value: serde_json::Value::String("value".to_string()),
+        }]);
+
+        assert_eq!(patch[0].op, "add");
+        assert_eq!(patch[0].path, "/fields/Custom.Field~1Name");
     }
 }
