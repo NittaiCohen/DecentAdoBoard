@@ -120,6 +120,31 @@ export function routeEdgeSimple(source: Point, destination: Point): string {
   return routeRightToLeftEdge(source, destination, 0);
 }
 
+function routeForwardEdge(
+  edge: Edge,
+  waypoints: Point[],
+  nodePositions: Map<string, NodePosition>,
+): Edge {
+  let path = buildRoundedPath(waypoints);
+  if (!path) {
+    const sourcePosition = nodePositions.get(edge.source);
+    const targetPosition = nodePositions.get(edge.target);
+    if (sourcePosition && targetPosition) {
+      path = routeEdgeSimple(
+        {
+          x: sourcePosition.x + sourcePosition.width,
+          y: sourcePosition.y + sourcePosition.height / 2,
+        },
+        {
+          x: targetPosition.x,
+          y: targetPosition.y + targetPosition.height / 2,
+        },
+      );
+    }
+  }
+  return { ...edge, data: { ...edge.data, path } };
+}
+
 // ── Main routing API ───────────────────────────────────────────────────────────
 
 /**
@@ -159,13 +184,9 @@ export function assignLaneOffsets(
   // Route forward edges using A* pathfinding
   const routeResults = routeAllEdges(forwardEdges, nodePositions, boundsMaxX, parentMap);
 
-  const routedForwardEdges = routeResults.map((result) => ({
-    ...result.edge,
-    data: {
-      ...result.edge.data,
-      path: buildRoundedPath(result.path),
-    },
-  }));
+  const routedForwardEdges = routeResults.map((result) =>
+    routeForwardEdge(result.edge, result.path, nodePositions),
+  );
 
   // Route backward edges through overhead lane
   const routedBackwardEdges = backwardEdges.map((edge, index) => {
