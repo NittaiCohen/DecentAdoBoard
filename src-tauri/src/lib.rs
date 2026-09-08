@@ -72,6 +72,7 @@ pub fn run() {
             reminders::list_reminders,
             reminders::create_reminder,
             reminders::delete_reminder,
+            reminders::clear_triggered_reminders,
             commands::write_debug_log,
         ])
         .run(tauri::generate_context!())

@@ -11,6 +11,8 @@ const REMINDERS_FILE: &str = "reminders.json";
 #[serde(rename_all = "lowercase")]
 pub enum ReminderStatus {
     Pending,
+    Triggered,
+    Cleared,
     Dismissed,
 }
 
@@ -126,6 +128,24 @@ impl ReminderManager {
         self.save(&reminders).await
     }
 
+    pub async fn mark_triggered(&self, reminder_id: &str) -> Result<(), String> {
+        let mut reminders = self.reminders.lock().await;
+        let reminder = reminders
+            .iter_mut()
+            .find(|reminder| reminder.id == reminder_id)
+            .ok_or_else(|| "Reminder not found".to_string())?;
+        reminder.status = ReminderStatus::Triggered;
+        self.save(&reminders).await
+    }
+
+    pub async fn clear_triggered(&self, work_item_id: i64) -> Result<(), String> {
+        let mut reminders = self.reminders.lock().await;
+        reminders.retain(|reminder| {
+            reminder.work_item_id != work_item_id || reminder.status != ReminderStatus::Triggered
+        });
+        self.save(&reminders).await
+    }
+
     async fn due_pending(&self) -> Vec<Reminder> {
         let reminders = self.reminders.lock().await;
         let now = Utc::now();
@@ -169,6 +189,14 @@ pub async fn delete_reminder(
     state.reminder_manager.delete(&reminder_id).await
 }
 
+#[tauri::command]
+pub async fn clear_triggered_reminders(
+    state: tauri::State<'_, crate::state::AppState>,
+    work_item_id: i64,
+) -> Result<(), String> {
+    state.reminder_manager.clear_triggered(work_item_id).await
+}
+
 pub fn start_scheduler<R: tauri::Runtime>(app_handle: AppHandle<R>, manager: Arc<ReminderManager>) {
     tauri::async_runtime::spawn(async move {
         loop {
@@ -183,8 +211,8 @@ pub fn start_scheduler<R: tauri::Runtime>(app_handle: AppHandle<R>, manager: Arc
 
                 match notification_result {
                     Ok(()) => {
-                        if let Err(error) = manager.delete(&reminder.id).await {
-                            eprintln!("Failed to delete delivered reminder: {error}");
+                        if let Err(error) = manager.mark_triggered(&reminder.id).await {
+                            eprintln!("Failed to mark delivered reminder: {error}");
                         }
                     }
                     Err(error) => {

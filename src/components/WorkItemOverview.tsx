@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { updateWorkItemFields } from "../api/tauri";
+import { clearTriggeredReminders, updateWorkItemFields } from "../api/tauri";
 import TagsEditor from "./TagsEditor";
 import ReminderButton from "./ReminderButton";
 import WorkItemTypeIcon from "./WorkItemTypeIcon";
@@ -160,6 +160,16 @@ function OverviewContent({
     setDraftFields(fieldsWithDefaults);
     setError(null);
   }, [availableFields, fieldsWithDefaults, overview]);
+
+  useEffect(() => {
+    void clearTriggeredReminders(overview.id).then(
+      () => {
+        void queryClient.invalidateQueries({ queryKey: ["reminders"] });
+        void queryClient.invalidateQueries({ queryKey: ["reminders", overview.id] });
+      },
+      (clearError) => setError(String(clearError)),
+    );
+  }, [overview.id, queryClient]);
 
   const visibleFields = availableFields.filter(
     (field) =>

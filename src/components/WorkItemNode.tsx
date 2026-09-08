@@ -1,6 +1,7 @@
 import { memo } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
-import type { WorkItem } from "../types";
+import type { Reminder, WorkItem } from "../types";
 import { TYPE_COLORS, DEFAULT_TYPE_COLOR } from "../utils/workItemColors";
 import AssignedToDisplay from "./AssignedToDisplay";
 import StateDropdown from "./StateDropdown";
@@ -8,6 +9,7 @@ import WorkItemTitleButton from "./WorkItemTitleButton";
 import WorkItemTypeIcon from "./WorkItemTypeIcon";
 import ReminderButton from "./ReminderButton";
 import type { BOARD_NODE_TYPES } from "../types/graph";
+import { listReminders } from "../api/tauri";
 
 export interface WorkItemNodeData extends Record<string, unknown> {
   workItem: WorkItem;
@@ -16,6 +18,7 @@ export interface WorkItemNodeData extends Record<string, unknown> {
   isActionable: boolean;
   childCount: number;
   doneChildCount: number;
+  hasTriggeredReminder?: boolean;
   onToggleExpand?: (id: number) => void;
   previewMode?: boolean;
   onPreviewStateChange?: (workItemId: number, newState: string) => void;
@@ -70,12 +73,23 @@ function WorkItemHeader({ data }: { data: WorkItemNodeData }) {
 
 function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
   const { workItem, isActionable, onOpenOverview } = data;
+  const { data: reminderData } = useQuery<Reminder[]>({
+    queryKey: ["reminders"],
+    queryFn: () => listReminders(),
+    refetchInterval: 15_000,
+  });
+  const hasTriggeredReminder = (reminderData ?? []).some(
+    (reminder) => reminder.work_item_id === workItem.id && reminder.status === "triggered",
+  );
   const colorClass = TYPE_COLORS[workItem.type] ?? DEFAULT_TYPE_COLOR;
   const actionableRing = isActionable ? "ring-2 ring-green-500 dark:ring-green-400" : "";
+  const triggeredReminderRing = hasTriggeredReminder
+    ? "ring-2 ring-purple-500 outline outline-2 outline-purple-500 outline-offset-1 dark:ring-purple-400 dark:outline-purple-400"
+    : "";
 
   return (
     <div
-      className={`flex min-h-[80px] min-w-[180px] max-w-[220px] flex-col overflow-hidden rounded-lg border-l-4 px-3 py-2 shadow-md ${colorClass} ${actionableRing}`}
+      className={`flex min-h-[80px] min-w-[180px] max-w-[220px] flex-col overflow-hidden rounded-lg border-l-4 px-3 py-2 shadow-md ${colorClass} ${actionableRing} ${triggeredReminderRing}`}
     >
       <Handle
         type="target"
@@ -104,7 +118,11 @@ function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
 
       <div className="flex shrink-0 items-center justify-between gap-2">
         <AssignedToDisplay value={workItem.assigned_to} />
-        <ReminderButton workItemId={workItem.id} workItemTitle={workItem.title} />
+        <ReminderButton
+          workItemId={workItem.id}
+          workItemTitle={workItem.title}
+          isTriggered={hasTriggeredReminder}
+        />
       </div>
     </div>
   );

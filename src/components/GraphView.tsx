@@ -300,7 +300,6 @@ function GraphViewInner({
   const [expandedParents, handleToggleExpand] = useExpandedParents(boardData);
   const { setViewport, getViewport, fitView } = useReactFlow();
   const queryClient = useQueryClient();
-
   const wiMap = useMemo(() => {
     const map = new Map<number, WorkItem>();
     if (boardData) {

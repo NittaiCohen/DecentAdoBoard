@@ -254,3 +254,8 @@ export async function createReminder(request: CreateReminderRequest): Promise<Re
 export async function deleteReminder(reminderId: string): Promise<void> {
   await invoke("delete_reminder", { reminderId });
 }
+
+/** Clear the delivered state for local reminders attached to a work item. */
+export async function clearTriggeredReminders(workItemId: number): Promise<void> {
+  await invoke("clear_triggered_reminders", { workItemId });
+}

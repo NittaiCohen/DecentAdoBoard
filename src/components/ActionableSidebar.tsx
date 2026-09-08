@@ -1,4 +1,7 @@
-import type { BoardData, WorkItem } from "../types";
+import { useMemo } from "react";
+import { useQuery } from "@tanstack/react-query";
+import type { BoardData, Reminder, WorkItem } from "../types";
+import { listReminders } from "../api/tauri";
 import { TYPE_COLORS, DEFAULT_TYPE_COLOR } from "../utils/workItemColors";
 import AssignedToDisplay from "./AssignedToDisplay";
 import { computeActionableSet } from "../utils/actionable";
@@ -28,6 +31,7 @@ const STATE_SORT_PRIORITY: Record<string, number> = {
 };
 
 const DEFAULT_STATE_PRIORITY = 2;
+const EMPTY_REMINDERS: Reminder[] = [];
 
 /** Return a numeric sort priority for a work item state (lower = more urgent). */
 function statePriority(state: string): number {
@@ -35,10 +39,16 @@ function statePriority(state: string): number {
 }
 
 /** Recursively sort actionable tree nodes by state priority. */
-function sortNodes(nodes: ActionableNode[]): void {
-  nodes.sort((a, b) => statePriority(a.workItem.state) - statePriority(b.workItem.state));
+function sortNodes(nodes: ActionableNode[], triggeredReminderIds: Set<number>): void {
+  nodes.sort((a, b) => {
+    const aTriggered = triggeredReminderIds.has(a.workItem.id) ? 0 : 1;
+    const bTriggered = triggeredReminderIds.has(b.workItem.id) ? 0 : 1;
+    return (
+      aTriggered - bTriggered || statePriority(a.workItem.state) - statePriority(b.workItem.state)
+    );
+  });
   for (const node of nodes) {
-    sortNodes(node.children);
+    sortNodes(node.children, triggeredReminderIds);
   }
 }
 
@@ -72,13 +82,19 @@ function groupActionableByParent(
 }
 
 /** Build a hierarchical tree of actionable work items from flat board data. */
-function buildActionableTree(boardData?: BoardData): ActionableNode[] {
+function buildActionableTree(
+  boardData: BoardData | undefined,
+  triggeredReminderIds: Set<number>,
+): ActionableNode[] {
   if (!boardData) {
     return [];
   }
 
   const workItemMap = new Map(boardData.work_items.map((workItem) => [workItem.id, workItem]));
   const actionableSet = computeActionableSet(boardData.work_items);
+  for (const workItemId of triggeredReminderIds) {
+    actionableSet.add(workItemId);
+  }
   const childrenByParent = groupActionableByParent(boardData.work_items, actionableSet);
 
   // Recursively build tree nodes
@@ -125,7 +141,7 @@ function buildActionableTree(boardData?: BoardData): ActionableNode[] {
     });
   }
 
-  sortNodes(topLevel);
+  sortNodes(topLevel, triggeredReminderIds);
   return topLevel;
 }
 
@@ -133,17 +149,21 @@ function ActionableNodeCard({
   node,
   depth,
   onOpenOverview,
+  triggeredReminderIds,
 }: {
   node: ActionableNode;
   depth: number;
   onOpenOverview: (workItemId: number) => void;
+  triggeredReminderIds: Set<number>;
 }) {
   const colorClass = TYPE_COLORS[node.workItem.type] ?? DEFAULT_TYPE_COLOR;
   const compact = depth > 0;
   const padding = compact ? "px-2 py-1.5" : "p-3";
+  const isTriggered = triggeredReminderIds.has(node.workItem.id);
+  const triggeredReminderRing = isTriggered ? "ring-2 ring-purple-500 dark:ring-purple-400" : "";
 
   return (
-    <div className={`rounded border-l-4 ${padding} ${colorClass}`}>
+    <div className={`rounded border-l-4 ${padding} ${colorClass} ${triggeredReminderRing}`}>
       <div className="flex items-center gap-1.5 mb-1">
         <WorkItemTypeIcon workItemType={node.workItem.type} className="h-3.5 w-3.5 shrink-0" />
         <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
@@ -169,7 +189,11 @@ function ActionableNodeCard({
       </WorkItemTitleButton>
       <div className="flex items-center justify-between gap-2">
         <AssignedToDisplay value={node.workItem.assigned_to} />
-        <ReminderButton workItemId={node.workItem.id} workItemTitle={node.workItem.title} />
+        <ReminderButton
+          workItemId={node.workItem.id}
+          workItemTitle={node.workItem.title}
+          isTriggered={isTriggered}
+        />
       </div>
       {node.children.length > 0 && (
         <div className="space-y-1.5 mt-2 ml-1">
@@ -179,6 +203,7 @@ function ActionableNodeCard({
               node={child}
               depth={depth + 1}
               onOpenOverview={onOpenOverview}
+              triggeredReminderIds={triggeredReminderIds}
             />
           ))}
         </div>
@@ -193,7 +218,22 @@ export default function ActionableSidebar({
   boardData,
   onOpenOverview,
 }: ActionableSidebarProps) {
-  const tree = buildActionableTree(boardData);
+  const { data: reminderData } = useQuery({
+    queryKey: ["reminders"],
+    queryFn: () => listReminders(),
+    refetchInterval: 15_000,
+  });
+  const reminders = reminderData ?? EMPTY_REMINDERS;
+  const triggeredReminderIds = useMemo(
+    () =>
+      new Set(
+        reminders
+          .filter((reminder) => reminder.status === "triggered")
+          .map((reminder) => reminder.work_item_id),
+      ),
+    [reminders],
+  );
+  const tree = buildActionableTree(boardData, triggeredReminderIds);
   const totalCount = countLeafItems(tree);
 
   return (
@@ -227,6 +267,7 @@ export default function ActionableSidebar({
                   node={node}
                   depth={0}
                   onOpenOverview={onOpenOverview}
+                  triggeredReminderIds={triggeredReminderIds}
                 />
               ))}
             </div>
