@@ -1,5 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
+use chrono::Datelike;
 use tauri::State;
 
 use crate::ado_client::{check_response, fetch_iterations, fetch_work_items};
@@ -137,18 +138,13 @@ async fn fetch_work_item_type_metadata(
     Ok(result)
 }
 
+fn calendar_sprint_name(year_month: &str, day: u32) -> String {
+    let half = if day <= 15 { "01" } else { "02" };
+    format!("{year_month}-{half}")
+}
+
 fn current_iteration_path(iterations: &[crate::models::Iteration]) -> Option<String> {
     let now_utc = chrono::Utc::now();
-    let current_year_month = now_utc.format("%y%m").to_string();
-    if let Some(calendar_named_iteration) = iterations.iter().find(|iteration| {
-        iteration
-            .name
-            .trim()
-            .starts_with(current_year_month.as_str())
-    }) {
-        return Some(calendar_named_iteration.path.clone());
-    }
-
     let now = now_utc.to_rfc3339();
     iterations
         .iter()
@@ -161,6 +157,13 @@ fn current_iteration_path(iterations: &[crate::models::Iteration]) -> Option<Str
                     .finish_date
                     .as_deref()
                     .is_some_and(|finish| now.as_str() <= finish)
+        })
+        .or_else(|| {
+            let expected_name =
+                calendar_sprint_name(&now_utc.format("%y%m").to_string(), now_utc.day());
+            iterations
+                .iter()
+                .find(|iteration| iteration.name.trim().eq_ignore_ascii_case(&expected_name))
         })
         .or_else(|| {
             iterations
@@ -912,7 +915,7 @@ mod tests {
     #[test]
     fn prefers_the_calendar_named_current_sprint() {
         let current_year_month = chrono::Utc::now().format("%y%m").to_string();
-        let current_name = format!("{current_year_month}-01");
+        let current_name = calendar_sprint_name(&current_year_month, chrono::Utc::now().day());
         let iterations = vec![
             Iteration {
                 id: "popular-past".to_string(),
@@ -934,6 +937,14 @@ mod tests {
             current_iteration_path(&iterations),
             Some(format!("Project\\{current_name}"))
         );
+    }
+
+    #[test]
+    fn calendar_sprint_name_selects_the_month_half() {
+        assert_eq!(calendar_sprint_name("2609", 1), "2609-01");
+        assert_eq!(calendar_sprint_name("2609", 15), "2609-01");
+        assert_eq!(calendar_sprint_name("2609", 16), "2609-02");
+        assert_eq!(calendar_sprint_name("2609", 30), "2609-02");
     }
 
     #[test]
