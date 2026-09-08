@@ -1,5 +1,6 @@
 #![deny(warnings)]
 
+mod ado_api;
 mod ado_client;
 mod ado_creation;
 mod ado_writes;

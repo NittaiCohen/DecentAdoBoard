@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use sha2::{Digest, Sha256};
 use tauri::State;
 
+use crate::ado_api::{create_work_item_from_patch, patch_work_item};
 use crate::ado_client::check_response;
 use crate::ai_planner::{planner_validation_context, validate_plan};
 use crate::audit_log::AuditAction;
@@ -150,13 +151,6 @@ async fn create_work_item(
     submission_tag: &str,
 ) -> Result<i64, String> {
     let config = state.get_config()?;
-    let auth = state.get_bearer_token().await?;
-    let url = format!(
-        "https://dev.azure.com/{}/{}/_apis/wit/workitems/${}?api-version=7.1",
-        config.organization,
-        config.project,
-        urlencoding::encode(&item.work_item_type)
-    );
     let patch = create_patch(
         item,
         &config,
@@ -164,25 +158,8 @@ async fn create_work_item(
         parent_ado_id,
         submission_tag,
     );
-    let response = state
-        .http_client
-        .post(url)
-        .header("Authorization", auth)
-        .header("Content-Type", "application/json-patch+json")
-        .json(&patch)
-        .send()
-        .await
-        .map_err(|error| format!("Failed to create '{}': {error}", item.title))?;
-    let response = check_response(response, &format!("Create '{}'", item.title)).await?;
-    let body: serde_json::Value = response.json().await.map_err(|error| {
-        format!(
-            "Failed to parse created work item '{}': {error}",
-            item.title
-        )
-    })?;
-    let ado_id = body["id"]
-        .as_i64()
-        .ok_or_else(|| format!("ADO returned no ID for created work item '{}'", item.title))?;
+    let context = format!("Create '{}'", item.title);
+    let ado_id = create_work_item_from_patch(state, &item.work_item_type, &patch, &context).await?;
 
     if let Err(error) = state.audit_log.log(
         AuditAction::Create {
@@ -348,11 +325,6 @@ async fn add_dependency_if_missing(
         return Ok(());
     }
     let config = state.get_config()?;
-    let auth = state.get_bearer_token().await?;
-    let url = format!(
-        "https://dev.azure.com/{}/{}/_apis/wit/workitems/{source_id}?api-version=7.1",
-        config.organization, config.project
-    );
     let patch = vec![JsonPatchOperation {
         op: "add".to_string(),
         path: "/relations/-".to_string(),
@@ -364,18 +336,7 @@ async fn add_dependency_if_missing(
             ),
         }),
     }];
-    let response = state
-        .http_client
-        .patch(url)
-        .header("Authorization", auth)
-        .header("Content-Type", "application/json-patch+json")
-        .json(&patch)
-        .send()
-        .await
-        .map_err(|error| {
-            format!("Failed to add dependency from {source_id} to {target_id}: {error}")
-        })?;
-    check_response(response, "Add generated dependency").await?;
+    patch_work_item(state, source_id, &patch, "Add generated dependency").await?;
     state.audit_log.log(
         AuditAction::AddDependency {
             predecessor_id: source_id,

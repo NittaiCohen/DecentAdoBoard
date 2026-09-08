@@ -20,6 +20,36 @@ pub(crate) async fn check_response(
     Err(format!("{context} failed ({status}): {body}"))
 }
 
+/// Fetch valid states for a work item type from Azure DevOps.
+pub(crate) async fn fetch_work_item_type_states(
+    state: &AppState,
+    work_item_type: &str,
+) -> Result<Vec<AdoWorkItemTypeState>, String> {
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workitemtypes/{}/states?api-version=7.1",
+        config.organization,
+        config.project,
+        urlencoding::encode(work_item_type)
+    );
+    let response = state
+        .http_client
+        .get(url)
+        .header("Authorization", auth)
+        .send()
+        .await
+        .map_err(|error| format!("Failed to fetch states for '{work_item_type}': {error}"))?;
+    let response =
+        check_response(response, &format!("Fetch states for '{work_item_type}'")).await?;
+    let body: WorkItemTypeStatesResponse = response
+        .json()
+        .await
+        .map_err(|error| format!("Failed to parse states for '{work_item_type}': {error}"))?;
+
+    Ok(body.value)
+}
+
 /// Escape single quotes for safe interpolation into WIQL string literals.
 fn escape_wiql(value: &str) -> String {
     value.replace('\'', "''")
