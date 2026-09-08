@@ -460,7 +460,7 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
 
               <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
                 {
-                  "State, sprint, and dependency changes update only this temporary preview and are not written to ADO."
+                  "You can edit state, sprint, and dependencies in this preview. These values are written to ADO only after Final submit."
                 }
               </p>
 

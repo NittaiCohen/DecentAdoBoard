@@ -138,7 +138,18 @@ async fn fetch_work_item_type_metadata(
 }
 
 fn current_iteration_path(iterations: &[crate::models::Iteration]) -> Option<String> {
-    let now = chrono::Utc::now().to_rfc3339();
+    let now_utc = chrono::Utc::now();
+    let current_year_month = now_utc.format("%y%m").to_string();
+    if let Some(calendar_named_iteration) = iterations.iter().find(|iteration| {
+        iteration
+            .name
+            .trim()
+            .starts_with(current_year_month.as_str())
+    }) {
+        return Some(calendar_named_iteration.path.clone());
+    }
+
+    let now = now_utc.to_rfc3339();
     iterations
         .iter()
         .find(|iteration| {
@@ -175,6 +186,34 @@ fn current_iteration_path(iterations: &[crate::models::Iteration]) -> Option<Str
         })
         .or_else(|| iterations.first())
         .map(|iteration| iteration.path.clone())
+}
+
+fn requested_iteration_path(
+    context: &AiPlannerContext,
+    request: &GenerateWorkItemPlanRequest,
+) -> Option<String> {
+    let mut request_text = request.mission.to_lowercase();
+    if let Some(refinement_request) = &request.refinement_request {
+        request_text.push('\n');
+        request_text.push_str(&refinement_request.to_lowercase());
+    }
+
+    context
+        .iterations
+        .iter()
+        .find(|iteration| {
+            let name = iteration.name.to_lowercase();
+            let path = iteration.path.to_lowercase();
+            name.len() >= 4 && (request_text.contains(&name) || request_text.contains(&path))
+        })
+        .map(|iteration| iteration.path.clone())
+        .or_else(|| context.current_iteration_path.clone())
+        .or_else(|| {
+            context
+                .iterations
+                .first()
+                .map(|iteration| iteration.path.clone())
+        })
 }
 
 fn iterations_from_work_items(
@@ -501,6 +540,7 @@ fn normalize_plan_value(
     else {
         return;
     };
+    let target_iteration_path = requested_iteration_path(context, request).unwrap_or_default();
     for item in items {
         let Some(item) = item.as_object_mut() else {
             continue;
@@ -540,28 +580,9 @@ fn normalize_plan_value(
             );
         }
 
-        let generated_iteration = item
-            .get("iterationPath")
-            .and_then(serde_json::Value::as_str);
-        let normalized_iteration = generated_iteration
-            .and_then(|iteration| {
-                context.iterations.iter().find(|valid_iteration| {
-                    valid_iteration.path.eq_ignore_ascii_case(iteration)
-                        || valid_iteration.name.eq_ignore_ascii_case(iteration)
-                })
-            })
-            .map(|iteration| iteration.path.clone())
-            .or_else(|| context.current_iteration_path.clone())
-            .or_else(|| {
-                context
-                    .iterations
-                    .first()
-                    .map(|iteration| iteration.path.clone())
-            })
-            .unwrap_or_default();
         item.insert(
             "iterationPath".to_string(),
-            serde_json::Value::String(normalized_iteration),
+            serde_json::Value::String(target_iteration_path.clone()),
         );
 
         if item
@@ -889,6 +910,33 @@ mod tests {
     }
 
     #[test]
+    fn prefers_the_calendar_named_current_sprint() {
+        let current_year_month = chrono::Utc::now().format("%y%m").to_string();
+        let current_name = format!("{current_year_month}-01");
+        let iterations = vec![
+            Iteration {
+                id: "popular-past".to_string(),
+                name: "2605-01".to_string(),
+                path: "Project\\2605-01".to_string(),
+                start_date: None,
+                finish_date: None,
+            },
+            Iteration {
+                id: "current".to_string(),
+                name: current_name.clone(),
+                path: format!("Project\\{current_name}"),
+                start_date: None,
+                finish_date: None,
+            },
+        ];
+
+        assert_eq!(
+            current_iteration_path(&iterations),
+            Some(format!("Project\\{current_name}"))
+        );
+    }
+
+    #[test]
     fn derives_undated_iterations_from_existing_work_items() {
         let work_item = |id, iteration_path: &str| WorkItem {
             id,
@@ -989,6 +1037,66 @@ mod tests {
         assert_eq!(plan.items[1].state, "Proposed");
         assert_eq!(plan.items[1].iteration_path, "Project\\Current");
         assert_eq!(validate_plan(&plan, &context()), Ok(()));
+    }
+
+    #[test]
+    fn regeneration_uses_current_sprint_instead_of_copying_old_plan_value() {
+        let mut planner_context = context();
+        planner_context.iterations.insert(
+            0,
+            Iteration {
+                id: "past".to_string(),
+                name: "2605-01".to_string(),
+                path: "Project\\2605-01".to_string(),
+                start_date: None,
+                finish_date: None,
+            },
+        );
+        let request = GenerateWorkItemPlanRequest {
+            mission: "Build a feature".to_string(),
+            refinement_request: Some("Put it in the current sprint".to_string()),
+            current_plan: Some(valid_plan()),
+        };
+        let response = r#"{
+            "mission": "Build a feature",
+            "items": [{
+                "temporaryId": "task-1",
+                "parentTemporaryId": null,
+                "type": "Task",
+                "state": "Proposed",
+                "title": "Implement feature",
+                "description": "",
+                "acceptanceCriteria": "",
+                "iterationPath": "Project\\2605-01",
+                "assignedTo": "user@example.com",
+                "dependencyTemporaryIds": []
+            }]
+        }"#;
+
+        let plan = parse_generated_plan(response, &planner_context, &request).unwrap();
+        assert_eq!(plan.items[0].iteration_path, "Project\\Current");
+    }
+
+    #[test]
+    fn explicitly_named_available_sprint_overrides_current_sprint() {
+        let mut planner_context = context();
+        planner_context.iterations.push(Iteration {
+            id: "requested".to_string(),
+            name: "2610-01".to_string(),
+            path: "Project\\2610-01".to_string(),
+            start_date: None,
+            finish_date: None,
+        });
+        let request = GenerateWorkItemPlanRequest {
+            mission: "Build a feature in sprint 2610-01".to_string(),
+            refinement_request: None,
+            current_plan: None,
+        };
+
+        assert_eq!(
+            requested_iteration_path(&planner_context, &request),
+            Some("Project\\2610-01".to_string())
+        );
     }
 
     #[test]
