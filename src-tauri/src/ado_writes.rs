@@ -202,6 +202,22 @@ fn escape_json_pointer_segment(value: &str) -> String {
     value.replace('~', "~0").replace('/', "~1")
 }
 
+fn create_field_update_patch(updates: &[WorkItemFieldUpdate]) -> Vec<JsonPatchOperation> {
+    updates
+        .iter()
+        .map(|update| JsonPatchOperation {
+            // ADO accepts `add` for both absent and existing fields. `replace` fails when an
+            // optional field such as Description has never been set on the work item.
+            op: "add".to_string(),
+            path: format!(
+                "/fields/{}",
+                escape_json_pointer_segment(&update.reference_name)
+            ),
+            value: update.value.clone(),
+        })
+        .collect()
+}
+
 async fn update_fields_impl(
     state: &AppState,
     work_item_id: i64,
@@ -217,17 +233,7 @@ async fn update_fields_impl(
         "https://dev.azure.com/{}/{}/_apis/wit/workitems/{}?api-version=7.1",
         config.organization, config.project, work_item_id
     );
-    let patch_body: Vec<JsonPatchOperation> = updates
-        .iter()
-        .map(|update| JsonPatchOperation {
-            op: "replace".to_string(),
-            path: format!(
-                "/fields/{}",
-                escape_json_pointer_segment(&update.reference_name)
-            ),
-            value: update.value.clone(),
-        })
-        .collect();
+    let patch_body = create_field_update_patch(updates);
 
     let response = state
         .http_client
@@ -457,5 +463,16 @@ mod tests {
             urlencoding_path("Product Backlog Item"),
             "Product%20Backlog%20Item"
         );
+    }
+
+    #[test]
+    fn field_updates_use_add_for_absent_and_existing_fields() {
+        let patch = create_field_update_patch(&[WorkItemFieldUpdate {
+            reference_name: "Custom.Field/Name".to_string(),
+            value: serde_json::Value::String("value".to_string()),
+        }]);
+
+        assert_eq!(patch[0].op, "add");
+        assert_eq!(patch[0].path, "/fields/Custom.Field~1Name");
     }
 }

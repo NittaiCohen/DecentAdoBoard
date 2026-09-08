@@ -1,13 +1,18 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
   AccountInfo,
+  AiPlannerContext,
   BoardData,
+  GeneratedWorkItemPlan,
+  GenerateWorkItemPlanRequest,
   IdentitySearchResult,
   ProjectInfo,
   ProjectTag,
+  SubmitWorkItemPlanRequest,
+  SubmitWorkItemPlanResult,
   TeamInfo,
-  WorkItemFieldUpdate,
   WorkItemComment,
+  WorkItemFieldUpdate,
   WorkItemOverview,
   WorkItemTypeState,
 } from "../types";
@@ -148,4 +153,23 @@ export async function addDependency(sourceId: number, targetId: number): Promise
 /** Remove a predecessor/successor dependency between two work items in ADO. */
 export async function removeDependency(sourceId: number, targetId: number): Promise<void> {
   await invoke("remove_dependency", { sourceId, targetId });
+}
+
+/** Fetch ADO metadata and Azure OpenAI configuration status for the AI planner. */
+export async function getAiPlannerContext(): Promise<AiPlannerContext> {
+  return await invoke<AiPlannerContext>("get_ai_planner_context");
+}
+
+/** Generate or regenerate a validated work-item plan through Azure OpenAI. */
+export async function generateWorkItemPlan(
+  request: GenerateWorkItemPlanRequest,
+): Promise<GeneratedWorkItemPlan> {
+  return await invoke<GeneratedWorkItemPlan>("generate_work_item_plan", { request });
+}
+
+/** Create an approved generated plan in ADO. */
+export async function submitWorkItemPlan(
+  request: SubmitWorkItemPlanRequest,
+): Promise<SubmitWorkItemPlanResult> {
+  return await invoke<SubmitWorkItemPlanResult>("submit_work_item_plan", { request });
 }

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useMemo } from "react";
 import GraphView from "./components/GraphView";
 import ActionableSidebar from "./components/ActionableSidebar";
 import HamburgerMenu from "./components/HamburgerMenu";
+import AiWorkItemModal from "./components/AiWorkItemModal";
 import { MicrosoftLogin } from "./components/MicrosoftLogin";
 import ProjectSelector from "./components/ProjectSelector";
 import WorkItemOverview from "./components/WorkItemOverview";
@@ -117,6 +118,7 @@ function BoardView({
   onCloseWorkItem: () => void;
   openWorkItemId: number | null;
 }) {
+  const [isAiPlannerOpen, setIsAiPlannerOpen] = useState(false);
   const operationContextRef = useRef<OperationContext>(null);
   const { push: pushUndo, undo, redo } = useUndoRedo(operationContextRef);
   const contextValue = useMemo(
@@ -137,6 +139,21 @@ function BoardView({
             onOpenWorkItem={onOpenWorkItem}
           />
           <HamburgerMenu onChangeProject={onChangeProject} onSignOut={onSignOut} />
+          <button
+            type="button"
+            onClick={() => setIsAiPlannerOpen(true)}
+            className="absolute bottom-4 right-4 z-20 flex items-center gap-2 rounded-full bg-blue-600 px-4 py-3 text-sm font-semibold text-white shadow-lg transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-400 focus:ring-offset-2 dark:focus:ring-offset-gray-900"
+            aria-label="Open AI Planner"
+          >
+            <span
+              aria-hidden="true"
+              className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 text-xs"
+            >
+              {"AI"}
+            </span>
+            {"AI Planner"}
+          </button>
+          <AiWorkItemModal isOpen={isAiPlannerOpen} onClose={() => setIsAiPlannerOpen(false)} />
         </div>
         <ActionableSidebar
           isOpen={sidebarOpen}

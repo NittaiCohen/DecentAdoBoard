@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
 // --- ADO API response types ---
 
@@ -178,6 +179,30 @@ pub struct AdoWorkItemTypeState {
 }
 
 #[derive(Debug, Deserialize)]
+pub struct WorkItemTypesResponse {
+    pub value: Vec<AdoWorkItemType>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct AdoWorkItemType {
+    pub name: String,
+    #[serde(rename = "isDisabled", default)]
+    pub is_disabled: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WorkItemTypeDefinition {
+    #[serde(default)]
+    pub fields: Vec<WorkItemTypeField>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct WorkItemTypeField {
+    #[serde(rename = "referenceName")]
+    pub reference_name: String,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct AdoWorkItemTypeFieldsResponse {
     pub value: Vec<AdoWorkItemFieldDefinition>,
 }
@@ -245,7 +270,7 @@ pub struct WorkItem {
     pub children: Vec<i64>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Iteration {
     pub id: String,
     pub name: String,
@@ -265,6 +290,85 @@ pub struct AdoConfig {
 pub struct BoardData {
     pub work_items: Vec<WorkItem>,
     pub iterations: Vec<Iteration>,
+}
+
+// --- AI planner types ---
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiWorkItemTypeMetadata {
+    pub name: String,
+    pub initial_state: String,
+    pub states: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AiPlannerContext {
+    pub work_item_types: Vec<AiWorkItemTypeMetadata>,
+    pub iterations: Vec<Iteration>,
+    pub current_iteration_path: Option<String>,
+    pub assigned_to: String,
+    pub ai_provider: Option<String>,
+    pub ai_ready: bool,
+    pub ai_error: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedWorkItem {
+    pub temporary_id: String,
+    pub parent_temporary_id: Option<String>,
+    #[serde(rename = "type")]
+    pub work_item_type: String,
+    pub state: String,
+    pub title: String,
+    pub description: String,
+    pub acceptance_criteria: String,
+    pub iteration_path: String,
+    pub assigned_to: String,
+    pub dependency_temporary_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct GeneratedWorkItemPlan {
+    pub mission: String,
+    pub items: Vec<GeneratedWorkItem>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GenerateWorkItemPlanRequest {
+    pub mission: String,
+    pub refinement_request: Option<String>,
+    pub current_plan: Option<GeneratedWorkItemPlan>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitWorkItemPlanRequest {
+    pub plan: GeneratedWorkItemPlan,
+    pub submission_id: String,
+    #[serde(default)]
+    pub existing_ado_ids: BTreeMap<String, i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedWorkItem {
+    pub temporary_id: String,
+    pub ado_id: i64,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct SubmitWorkItemPlanResult {
+    pub created_items: Vec<CreatedWorkItem>,
+    pub ado_ids: BTreeMap<String, i64>,
+    pub failed_temporary_id: Option<String>,
+    pub error: Option<String>,
 }
 
 #[cfg(test)]

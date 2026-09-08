@@ -470,6 +470,8 @@ function OverviewContent({
               title: getInputValue(draftFields[TITLE_FIELD_REFERENCE]),
               state: getInputValue(draftFields[STATE_FIELD_REFERENCE]),
               assigned_to: getBoardAssignedToValue(draftFields[ASSIGNED_TO_FIELD_REFERENCE]),
+              iteration_path: getInputValue(draftFields[ITERATION_PATH_FIELD_REFERENCE]),
+              area_path: getInputValue(draftFields[AREA_PATH_FIELD_REFERENCE]),
             };
           }),
         };

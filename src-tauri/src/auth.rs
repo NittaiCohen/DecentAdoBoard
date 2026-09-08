@@ -46,7 +46,7 @@ pub fn pat_tokens(pat: String) -> OAuthTokens {
 
 const ADO_RESOURCE_ID: &str = "499b84ac-1321-427f-aa17-267ca6975798";
 
-pub async fn get_az_cli_token() -> Result<OAuthTokens, String> {
+async fn get_az_cli_token_response(resource: &str) -> Result<serde_json::Value, String> {
     // On Windows, az is a .cmd file and must be invoked via cmd.exe.
     #[cfg(windows)]
     let output = tokio::process::Command::new("cmd")
@@ -56,13 +56,13 @@ pub async fn get_az_cli_token() -> Result<OAuthTokens, String> {
             "account",
             "get-access-token",
             "--resource",
-            ADO_RESOURCE_ID,
+            resource,
         ])
         .output()
         .await;
     #[cfg(not(windows))]
     let output = tokio::process::Command::new("az")
-        .args(["account", "get-access-token", "--resource", ADO_RESOURCE_ID])
+        .args(["account", "get-access-token", "--resource", resource])
         .output()
         .await;
 
@@ -75,8 +75,20 @@ pub async fn get_az_cli_token() -> Result<OAuthTokens, String> {
         return Err(format!("az CLI error (run 'az login' first): {stderr}"));
     }
 
-    let json: serde_json::Value = serde_json::from_slice(&output.stdout)
-        .map_err(|e| format!("Failed to parse az CLI output: {e}"))?;
+    serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse az CLI output: {e}"))
+}
+
+pub async fn get_az_cli_resource_access_token(resource: &str) -> Result<String, String> {
+    let json = get_az_cli_token_response(resource).await?;
+    json["accessToken"]
+        .as_str()
+        .map(str::to_string)
+        .ok_or_else(|| "No accessToken in az CLI output".to_string())
+}
+
+pub async fn get_az_cli_token() -> Result<OAuthTokens, String> {
+    let json = get_az_cli_token_response(ADO_RESOURCE_ID).await?;
 
     let access_token = json["accessToken"]
         .as_str()

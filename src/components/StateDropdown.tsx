@@ -10,12 +10,14 @@ interface StateDropdownProps {
   workItemId: number;
   workItemType: string;
   currentState: string;
+  onStateChange?: (newState: string) => void;
 }
 
 export default function StateDropdown({
   workItemId,
   workItemType,
   currentState,
+  onStateChange,
 }: StateDropdownProps) {
   const [displayState, setDisplayState] = useState(currentState);
   const pushUndo = useUndoRedoPush();
@@ -31,6 +33,13 @@ export default function StateDropdown({
 
   const changeState = useCallback(
     (newState: string) => {
+      if (onStateChange) {
+        onStateChange(newState);
+        setDisplayState(newState);
+        setIsOpen(false);
+        return;
+      }
+
       const ctx = operationContextRef.current;
       if (!ctx) {
         return;
@@ -45,7 +54,7 @@ export default function StateDropdown({
       pushUndo(op);
       setIsOpen(false);
     },
-    [workItemId, displayState, pushUndo, operationContextRef],
+    [workItemId, displayState, pushUndo, operationContextRef, onStateChange],
   );
 
   return (

@@ -17,4 +17,15 @@ export {
   type WorkItemFieldUpdate,
 } from "./ado";
 
+export {
+  type AiPlannerContext,
+  type AiWorkItemTypeMetadata,
+  type CreatedWorkItem,
+  type GeneratedWorkItem,
+  type GeneratedWorkItemPlan,
+  type GenerateWorkItemPlanRequest,
+  type SubmitWorkItemPlanRequest,
+  type SubmitWorkItemPlanResult,
+} from "./ai";
+
 export { type RequiredSome, type Point } from "./utils";
