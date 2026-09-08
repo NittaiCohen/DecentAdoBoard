@@ -5,6 +5,7 @@ import { computeActionableSet } from "../utils/actionable";
 import StateDropdown from "./StateDropdown";
 import WorkItemTitleButton from "./WorkItemTitleButton";
 import WorkItemTypeIcon from "./WorkItemTypeIcon";
+import ReminderButton from "./ReminderButton";
 
 interface ActionableSidebarProps {
   isOpen: boolean;
@@ -166,7 +167,10 @@ function ActionableNodeCard({
       >
         {node.workItem.title}
       </WorkItemTitleButton>
-      <AssignedToDisplay value={node.workItem.assigned_to} />
+      <div className="flex items-center justify-between gap-2">
+        <AssignedToDisplay value={node.workItem.assigned_to} />
+        <ReminderButton workItemId={node.workItem.id} workItemTitle={node.workItem.title} />
+      </div>
       {node.children.length > 0 && (
         <div className="space-y-1.5 mt-2 ml-1">
           {node.children.map((child) => (

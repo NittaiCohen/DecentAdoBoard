@@ -1,6 +1,7 @@
 use crate::audit_log::AuditLog;
 use crate::auth::OAuthTokens;
 use crate::models::{AdoConfig, AdoWorkItemFieldDefinition};
+use crate::reminders::ReminderManager;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -33,6 +34,7 @@ pub struct AppState {
     pub data_dir: std::path::PathBuf,
     pub icon_cache: Mutex<HashMap<String, CachedWorkItemIcon>>,
     pub work_item_fields_cache: Arc<Mutex<HashMap<String, CachedWorkItemFields>>>,
+    pub reminder_manager: Arc<ReminderManager>,
 }
 
 impl AppState {
@@ -40,6 +42,7 @@ impl AppState {
         let audit_log = AuditLog::new(&data_dir);
         let icon_cache = Self::load_icon_cache(&data_dir);
         let work_item_fields_cache = Self::load_work_item_fields_cache(&data_dir);
+        let reminder_manager = ReminderManager::new(data_dir.clone());
         Self {
             config: std::sync::Mutex::new(None),
             token: Arc::new(Mutex::new(None)),
@@ -52,6 +55,7 @@ impl AppState {
             data_dir,
             icon_cache: Mutex::new(icon_cache),
             work_item_fields_cache: Arc::new(Mutex::new(work_item_fields_cache)),
+            reminder_manager,
         }
     }
 

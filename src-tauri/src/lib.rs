@@ -10,6 +10,7 @@ mod auth;
 mod commands;
 mod foundry_local;
 mod models;
+mod reminders;
 mod state;
 
 use tauri::Manager;
@@ -18,12 +19,15 @@ use tauri::Manager;
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let data_dir = app
                 .path()
                 .app_data_dir()
                 .expect("failed to resolve app data dir");
             app.manage(state::AppState::new(data_dir));
+            let reminder_manager = app.state::<state::AppState>().reminder_manager.clone();
+            reminders::start_scheduler(app.handle().clone(), reminder_manager);
 
             #[cfg(debug_assertions)]
             if let Some(window) = app.get_webview_window("main") {
@@ -65,6 +69,9 @@ pub fn run() {
             ai_planner::get_ai_planner_context,
             ai_planner::generate_work_item_plan,
             ado_creation::submit_work_item_plan,
+            reminders::list_reminders,
+            reminders::create_reminder,
+            reminders::delete_reminder,
             commands::write_debug_log,
         ])
         .run(tauri::generate_context!())

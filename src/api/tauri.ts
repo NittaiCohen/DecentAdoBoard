@@ -17,6 +17,8 @@ import type {
   WorkItemFieldUpdate,
   WorkItemOverview,
   WorkItemTypeState,
+  CreateReminderRequest,
+  Reminder,
 } from "../types";
 
 /** Send the selected organization, project, and area path to the Rust backend. */
@@ -236,4 +238,19 @@ export async function submitWorkItemPlan(
   request: SubmitWorkItemPlanRequest,
 ): Promise<SubmitWorkItemPlanResult> {
   return await invoke<SubmitWorkItemPlanResult>("submit_work_item_plan", { request });
+}
+
+/** List local reminders, optionally limited to one work item. */
+export async function listReminders(workItemId?: number): Promise<Reminder[]> {
+  return await invoke<Reminder[]>("list_reminders", { workItemId });
+}
+
+/** Create a local reminder using an exact UTC timestamp or a relative delay. */
+export async function createReminder(request: CreateReminderRequest): Promise<Reminder> {
+  return await invoke<Reminder>("create_reminder", { request });
+}
+
+/** Delete a local reminder. */
+export async function deleteReminder(reminderId: string): Promise<void> {
+  await invoke("delete_reminder", { reminderId });
 }

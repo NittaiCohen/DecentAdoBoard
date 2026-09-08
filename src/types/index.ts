@@ -30,3 +30,5 @@ export {
 } from "./ai";
 
 export { type RequiredSome, type Point } from "./utils";
+
+export { type CreateReminderRequest, type Reminder, type ReminderStatus } from "./reminders";

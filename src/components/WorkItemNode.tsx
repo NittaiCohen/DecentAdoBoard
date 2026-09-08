@@ -6,6 +6,7 @@ import AssignedToDisplay from "./AssignedToDisplay";
 import StateDropdown from "./StateDropdown";
 import WorkItemTitleButton from "./WorkItemTitleButton";
 import WorkItemTypeIcon from "./WorkItemTypeIcon";
+import ReminderButton from "./ReminderButton";
 import type { BOARD_NODE_TYPES } from "../types/graph";
 
 export interface WorkItemNodeData extends Record<string, unknown> {
@@ -101,8 +102,9 @@ function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
         {workItem.title}
       </WorkItemTitleButton>
 
-      <div className="shrink-0">
+      <div className="flex shrink-0 items-center justify-between gap-2">
         <AssignedToDisplay value={workItem.assigned_to} />
+        <ReminderButton workItemId={workItem.id} workItemTitle={workItem.title} />
       </div>
     </div>
   );

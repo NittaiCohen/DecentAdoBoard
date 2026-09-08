@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { updateWorkItemFields } from "../api/tauri";
 import TagsEditor from "./TagsEditor";
+import ReminderButton from "./ReminderButton";
 import WorkItemTypeIcon from "./WorkItemTypeIcon";
 import WorkItemComments from "./WorkItemComments";
 import {
@@ -280,18 +281,25 @@ function OverviewContent({
             <WorkItemTypeIcon workItemType={overview.workItemType} className="h-4 w-4" />
             <span>{`${overview.workItemType} #${overview.id}`}</span>
           </div>
-          <input
-            type="text"
-            value={getInputValue(draftFields[TITLE_FIELD_REFERENCE])}
-            onChange={(event) =>
-              setDraftFields((current) => ({
-                ...current,
-                [TITLE_FIELD_REFERENCE]: event.target.value,
-              }))
-            }
-            className="w-full bg-transparent text-xl font-semibold outline-none ring-0"
-            aria-label="Title"
-          />
+          <div className="flex items-start gap-2">
+            <input
+              type="text"
+              value={getInputValue(draftFields[TITLE_FIELD_REFERENCE])}
+              onChange={(event) =>
+                setDraftFields((current) => ({
+                  ...current,
+                  [TITLE_FIELD_REFERENCE]: event.target.value,
+                }))
+              }
+              className="w-full bg-transparent text-xl font-semibold outline-none ring-0"
+              aria-label="Title"
+            />
+            <ReminderButton
+              workItemId={overview.id}
+              workItemTitle={getInputValue(draftFields[TITLE_FIELD_REFERENCE])}
+              className="mt-1"
+            />
+          </div>
           {tagsField && (
             <TagsEditor
               value={draftFields[TAGS_FIELD_REFERENCE] ?? null}
