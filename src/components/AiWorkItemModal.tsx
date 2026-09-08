@@ -27,11 +27,12 @@ interface AiWorkItemModalProps {
   onClose: () => void;
 }
 
-function LoadingIndicator({ message }: { message: string }) {
+function LoadingIndicator({ message, detail }: { message: string; detail?: string }) {
   return (
     <div className="flex min-h-72 flex-col items-center justify-center text-center">
       <div className="mb-4 h-10 w-10 animate-spin rounded-full border-4 border-blue-200 border-t-blue-600 dark:border-blue-900 dark:border-t-blue-400" />
       <p className="font-medium text-gray-800 dark:text-gray-100">{message}</p>
+      {detail && <p className="mt-2 max-w-md text-sm text-gray-500 dark:text-gray-400">{detail}</p>}
     </div>
   );
 }
@@ -429,7 +430,14 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
           )}
 
           {step === "generating" && (
-            <LoadingIndicator message="Generating your work-item plan..." />
+            <LoadingIndicator
+              message="Generating your work-item plan..."
+              detail={
+                context?.aiProvider === "foundryLocal"
+                  ? "Foundry Local runs on this computer. A full plan can take 1-2 minutes, and regeneration currently rebuilds the complete plan."
+                  : undefined
+              }
+            />
           )}
           {step === "submitting" && <LoadingIndicator message="Submitting the approved plan..." />}
 

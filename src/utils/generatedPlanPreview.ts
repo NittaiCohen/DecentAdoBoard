@@ -31,7 +31,10 @@ export function createGeneratedPlanPreview(
   const temporaryIdByPreviewId = new Map<number, string>();
 
   plan.items.forEach((item, index) => {
-    const previewId = -(index + PREVIEW_ID_START);
+    // These IDs exist only inside the isolated preview graph and are never submitted to ADO.
+    // Positive IDs follow the same rendering path as real ADO items; negative React Flow IDs
+    // caused dependency edges to disappear even though the relationship data was correct.
+    const previewId = index + PREVIEW_ID_START;
     previewIdByTemporaryId.set(item.temporaryId, previewId);
     temporaryIdByPreviewId.set(previewId, item.temporaryId);
   });

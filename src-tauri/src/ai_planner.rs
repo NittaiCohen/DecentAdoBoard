@@ -403,6 +403,7 @@ Rules:
 - Use assignedTo for generated items unless the user explicitly requests otherwise.
 - Parent and dependency references must point to temporaryId values in the same response.
 - Do not create hierarchy cycles or dependency cycles.
+- Keep each description and acceptanceCriteria concise so local generation finishes quickly.
 - Produce a practical hierarchy with implementation tasks, not a prose explanation."#
     ))
 }

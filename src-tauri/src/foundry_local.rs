@@ -290,6 +290,7 @@ pub async fn generate_chat_completion(
             {"role": "user", "content": user_prompt}
         ],
         "temperature": 0.2,
+        "max_tokens": 3000,
         "response_format": {"type": "json_object"}
     });
     let response = http_client
