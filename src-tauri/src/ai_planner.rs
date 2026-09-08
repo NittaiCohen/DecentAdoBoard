@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use tauri::State;
 
-use crate::ado_client::{check_response, fetch_iterations};
+use crate::ado_client::{check_response, fetch_iterations, fetch_work_items};
 use crate::auth::get_az_cli_resource_access_token;
 use crate::foundry_local;
 use crate::models::{
@@ -177,6 +177,34 @@ fn current_iteration_path(iterations: &[crate::models::Iteration]) -> Option<Str
         .map(|iteration| iteration.path.clone())
 }
 
+fn iterations_from_work_items(
+    work_items: &[crate::models::WorkItem],
+) -> Vec<crate::models::Iteration> {
+    let mut counts = HashMap::<String, usize>::new();
+    for work_item in work_items {
+        if !work_item.iteration_path.trim().is_empty() {
+            *counts.entry(work_item.iteration_path.clone()).or_default() += 1;
+        }
+    }
+
+    let mut paths: Vec<(String, usize)> = counts.into_iter().collect();
+    paths.sort_by(|(left_path, left_count), (right_path, right_count)| {
+        right_count
+            .cmp(left_count)
+            .then_with(|| left_path.cmp(right_path))
+    });
+    paths
+        .into_iter()
+        .map(|(path, _)| crate::models::Iteration {
+            id: path.clone(),
+            name: path.rsplit('\\').next().unwrap_or(&path).to_string(),
+            path,
+            start_date: None,
+            finish_date: None,
+        })
+        .collect()
+}
+
 async fn fetch_authenticated_identity(state: &AppState) -> Result<String, String> {
     let config = state.get_config()?;
     let auth = state.get_bearer_token().await?;
@@ -255,7 +283,13 @@ async fn resolve_ai_backend(http_client: &reqwest::Client) -> Result<ResolvedAiB
 /// excluded so that paths which merely validate a plan never touch the AI runtime.
 async fn planner_metadata(state: &AppState) -> Result<AiPlannerContext, String> {
     let work_item_types = fetch_work_item_type_metadata(state).await?;
-    let iterations = fetch_iterations(state).await?;
+    let mut iterations = fetch_iterations(state).await?;
+    if iterations.is_empty() {
+        // The shared board loader intentionally excludes undated classification nodes. Many ADO
+        // projects use exactly those, so recover the real paths from work items already assigned
+        // to the user rather than presenting the model with an empty iteration catalog.
+        iterations = iterations_from_work_items(&fetch_work_items(state).await?);
+    }
     let current_iteration_path = current_iteration_path(&iterations);
     let assigned_to = fetch_authenticated_identity(state).await?;
 
@@ -322,7 +356,8 @@ Rules:
 - Use an empty string for an unknown description or acceptanceCriteria.
 - Use an empty array for dependencyTemporaryIds when there are no dependencies.
 - Use the initialState for each type unless the user explicitly requests another valid state.
-- Use currentIterationPath unless the user explicitly requests another listed iteration.
+- Use currentIterationPath unless the user explicitly requests another listed iteration. If no
+  iterations are listed, use an empty string.
 - Use assignedTo for generated items unless the user explicitly requests otherwise.
 - Parent and dependency references must point to temporaryId values in the same response.
 - Do not create hierarchy cycles or dependency cycles.
@@ -701,7 +736,8 @@ pub(crate) fn validate_plan(
                 item.state, item.work_item_type
             ));
         }
-        if !valid_iterations.contains(item.iteration_path.as_str()) {
+        if !valid_iterations.is_empty() && !valid_iterations.contains(item.iteration_path.as_str())
+        {
             return Err(format!(
                 "Iteration '{}' is not available on the current board",
                 item.iteration_path
@@ -771,7 +807,7 @@ pub async fn generate_work_item_plan(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{GeneratedWorkItem, Iteration};
+    use crate::models::{GeneratedWorkItem, Iteration, WorkItem};
 
     fn context() -> AiPlannerContext {
         AiPlannerContext {
@@ -850,6 +886,32 @@ mod tests {
             current_iteration_path(&[undated]),
             Some("Project\\Undated".to_string())
         );
+    }
+
+    #[test]
+    fn derives_undated_iterations_from_existing_work_items() {
+        let work_item = |id, iteration_path: &str| WorkItem {
+            id,
+            title: format!("Item {id}"),
+            state: "Active".to_string(),
+            work_item_type: "Task".to_string(),
+            assigned_to: None,
+            iteration_path: iteration_path.to_string(),
+            area_path: "Project".to_string(),
+            predecessors: Vec::new(),
+            successors: Vec::new(),
+            parent_id: None,
+            children: Vec::new(),
+        };
+        let iterations = iterations_from_work_items(&[
+            work_item(1, "Project\\Sprint 2"),
+            work_item(2, "Project\\Sprint 1"),
+            work_item(3, "Project\\Sprint 2"),
+        ]);
+
+        assert_eq!(iterations.len(), 2);
+        assert_eq!(iterations[0].path, "Project\\Sprint 2");
+        assert_eq!(iterations[0].name, "Sprint 2");
     }
 
     #[test]
@@ -956,6 +1018,17 @@ mod tests {
 
         let plan = parse_generated_plan(response, &planner_context, &request).unwrap();
         assert_eq!(plan.items[0].iteration_path, "Project\\Current");
+        assert_eq!(validate_plan(&plan, &planner_context), Ok(()));
+    }
+
+    #[test]
+    fn allows_ado_to_apply_its_default_when_no_iteration_metadata_exists() {
+        let mut planner_context = context();
+        planner_context.iterations.clear();
+        planner_context.current_iteration_path = None;
+        let mut plan = valid_plan();
+        plan.items[0].iteration_path.clear();
+
         assert_eq!(validate_plan(&plan, &planner_context), Ok(()));
     }
 
