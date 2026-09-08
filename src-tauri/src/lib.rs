@@ -54,6 +54,7 @@ pub fn run() {
             ado_writes::update_work_item_state,
             ado_writes::update_work_item_iteration,
             ado_writes::update_work_item_fields,
+            ado_writes::create_work_item,
             ado_writes::get_work_item_type_states,
             ado_writes::add_dependency,
             ado_writes::remove_dependency,

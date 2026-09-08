@@ -273,6 +273,91 @@ pub async fn update_work_item_fields(
 }
 
 #[tauri::command]
+pub async fn create_work_item(
+    state: State<'_, AppState>,
+    work_item_type: String,
+    title: String,
+    description: Option<String>,
+    iteration_path: Option<String>,
+    additional_fields: Option<Vec<WorkItemFieldUpdate>>,
+) -> Result<i64, String> {
+    if title.trim().is_empty() {
+        return Err("A work item title is required".to_string());
+    }
+
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workitems/${}?api-version=7.1",
+        config.organization,
+        config.project,
+        urlencoding_path(&work_item_type)
+    );
+
+    let mut patch_body = vec![JsonPatchOperation {
+        op: "add".to_string(),
+        path: "/fields/System.Title".to_string(),
+        value: serde_json::Value::String(title.trim().to_string()),
+    }];
+    if let Some(description) = description.filter(|value| !value.trim().is_empty()) {
+        patch_body.push(JsonPatchOperation {
+            op: "add".to_string(),
+            path: "/fields/System.Description".to_string(),
+            value: serde_json::Value::String(description),
+        });
+    }
+    if let Some(iteration_path) = iteration_path.filter(|value| !value.trim().is_empty()) {
+        patch_body.push(JsonPatchOperation {
+            op: "add".to_string(),
+            path: "/fields/System.IterationPath".to_string(),
+            value: serde_json::Value::String(iteration_path),
+        });
+    }
+    if let Some(additional_fields) = additional_fields {
+        for field in additional_fields {
+            if matches!(
+                field.reference_name.as_str(),
+                "System.Title" | "System.Description" | "System.IterationPath"
+            ) {
+                continue;
+            }
+            if field.value.is_null()
+                || field
+                    .value
+                    .as_str()
+                    .is_some_and(|value| value.trim().is_empty())
+            {
+                continue;
+            }
+            patch_body.push(JsonPatchOperation {
+                op: "add".to_string(),
+                path: format!("/fields/{}", field.reference_name),
+                value: field.value,
+            });
+        }
+    }
+
+    let response = state
+        .http_client
+        .post(&url)
+        .header("Authorization", &auth)
+        .header("Content-Type", "application/json-patch+json")
+        .json(&patch_body)
+        .send()
+        .await
+        .map_err(|e| format!("Create work item request failed: {e}"))?;
+    let response = check_response(response, "Create work item").await?;
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Create work item response parse error: {e}"))?;
+
+    body["id"]
+        .as_i64()
+        .ok_or_else(|| "Create work item response did not contain an id".to_string())
+}
+
+#[tauri::command]
 pub async fn get_work_item_type_states(
     state: State<'_, AppState>,
     work_item_type: String,

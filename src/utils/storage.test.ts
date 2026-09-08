@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach } from "vitest";
-import { getSavedConfig, saveConfig, clearConfig } from "./storage";
+import {
+  clearConfig,
+  getRecentWorkItemTypes,
+  getSavedConfig,
+  saveConfig,
+  saveRecentWorkItemType,
+} from "./storage";
 
 describe("storage utilities", () => {
   beforeEach(() => {
@@ -56,6 +62,30 @@ describe("storage utilities", () => {
       const config = { organization: 123, project: "proj", areaPath: "area" };
       localStorage.setItem("ado-config", JSON.stringify(config));
       expect(getSavedConfig()).toBeNull();
+    });
+
+    describe("recent work item types", () => {
+      it("stores the newest type first and removes duplicates", () => {
+        saveRecentWorkItemType("Bug");
+        saveRecentWorkItemType("Task");
+        saveRecentWorkItemType("Bug");
+
+        expect(getRecentWorkItemTypes()).toEqual(["Bug", "Task"]);
+      });
+
+      it("keeps only the five most recent types", () => {
+        ["Bug", "Task", "Feature", "Epic", "User Story", "Product Backlog Item"].forEach(
+          saveRecentWorkItemType,
+        );
+
+        expect(getRecentWorkItemTypes()).toEqual([
+          "Product Backlog Item",
+          "User Story",
+          "Epic",
+          "Feature",
+          "Task",
+        ]);
+      });
     });
   });
 });

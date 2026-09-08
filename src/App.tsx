@@ -1,14 +1,17 @@
 import { useState, useEffect, useRef, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import GraphView from "./components/GraphView";
 import ActionableSidebar from "./components/ActionableSidebar";
 import HamburgerMenu from "./components/HamburgerMenu";
 import { MicrosoftLogin } from "./components/MicrosoftLogin";
 import ProjectSelector from "./components/ProjectSelector";
 import WorkItemOverview from "./components/WorkItemOverview";
-import { useBoardData } from "./hooks/useAdoData";
+import CreateWorkItemDialog from "./components/CreateWorkItemDialog";
+import { prefetchBoardWorkItemTypes, useBoardData } from "./hooks/useAdoData";
 import { setConfig, checkAuth, logout } from "./api/tauri";
 import { getSavedConfig, clearConfig } from "./utils/storage";
 import type { BoardData } from "./types";
+import { getCurrentIterationPath } from "./utils/iterations";
 import { useUndoRedo } from "./hooks/useUndoRedo";
 import { UndoRedoProvider } from "./contexts/UndoRedoContext";
 import type { OperationContext } from "./utils/reversibleOperations";
@@ -107,6 +110,9 @@ function BoardView({
   onOpenWorkItem,
   onCloseWorkItem,
   openWorkItemId,
+  onCreateWorkItem,
+  createWorkItemOpen,
+  isPreloadingCreateWorkItemData,
 }: {
   boardData?: BoardData;
   sidebarOpen: boolean;
@@ -116,6 +122,9 @@ function BoardView({
   onOpenWorkItem: (workItemId: number) => void;
   onCloseWorkItem: () => void;
   openWorkItemId: number | null;
+  onCreateWorkItem: () => void;
+  createWorkItemOpen: boolean;
+  isPreloadingCreateWorkItemData: boolean;
 }) {
   const operationContextRef = useRef<OperationContext>(null);
   const { push: pushUndo, undo, redo } = useUndoRedo(operationContextRef);
@@ -136,7 +145,11 @@ function BoardView({
             redo={redo}
             onOpenWorkItem={onOpenWorkItem}
           />
-          <HamburgerMenu onChangeProject={onChangeProject} onSignOut={onSignOut} />
+          <HamburgerMenu
+            onChangeProject={onChangeProject}
+            onSignOut={onSignOut}
+            onCreateWorkItem={onCreateWorkItem}
+          />
         </div>
         <ActionableSidebar
           isOpen={sidebarOpen}
@@ -148,14 +161,24 @@ function BoardView({
       {openWorkItemId !== null && (
         <WorkItemOverview workItemId={openWorkItemId} onClose={onCloseWorkItem} />
       )}
+      {createWorkItemOpen && (
+        <CreateWorkItemDialog
+          onClose={onCreateWorkItem}
+          isPreloadingFields={isPreloadingCreateWorkItemData}
+          defaultIterationPath={boardData ? getCurrentIterationPath(boardData.iterations) : null}
+        />
+      )}
     </UndoRedoProvider>
   );
 }
 
 function App() {
+  const queryClient = useQueryClient();
   const [step, setStep] = useState<AppStep>("pat");
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [openWorkItemId, setOpenWorkItemId] = useState<number | null>(null);
+  const [createWorkItemOpen, setCreateWorkItemOpen] = useState(false);
+  const [isPreloadingCreateWorkItemData, setIsPreloadingCreateWorkItemData] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
   const restoring = useRestoreSession(setStep, true);
 
@@ -167,6 +190,19 @@ function App() {
   const boardData = fetchedBoardData;
   const isLoading = isBoardDataLoading;
   const error = boardDataError;
+  function toggleCreateWorkItem(): void {
+    if (createWorkItemOpen) {
+      setCreateWorkItemOpen(false);
+      return;
+    }
+
+    setCreateWorkItemOpen(true);
+    setIsPreloadingCreateWorkItemData(true);
+    void prefetchBoardWorkItemTypes(queryClient).then(
+      () => setIsPreloadingCreateWorkItemData(false),
+      () => setIsPreloadingCreateWorkItemData(false),
+    );
+  }
 
   useEffect(() => {
     if (step !== "board" || !error || !isAuthError(error)) {
@@ -238,6 +274,9 @@ function App() {
       onOpenWorkItem={setOpenWorkItemId}
       onCloseWorkItem={() => setOpenWorkItemId(null)}
       openWorkItemId={openWorkItemId}
+      onCreateWorkItem={toggleCreateWorkItem}
+      createWorkItemOpen={createWorkItemOpen}
+      isPreloadingCreateWorkItemData={isPreloadingCreateWorkItemData}
     />
   );
 }
