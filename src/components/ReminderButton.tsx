@@ -51,7 +51,8 @@ export default function ReminderButton({
         type="button"
         onClick={(event) => void openReminderEditor(event)}
         onMouseDown={(event) => event.stopPropagation()}
-        className={`rounded p-1 text-gray-500 hover:bg-black/10 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-100 ${className}`}
+        onPointerDown={(event) => event.stopPropagation()}
+        className={`nodrag nopan rounded p-1 text-gray-500 hover:bg-black/10 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-100 ${className}`}
         title={isTriggered ? "Clear reminder notification" : "Set reminder"}
         aria-label={`${isTriggered ? "Clear reminder notification" : "Set reminder"} for ${workItemTitle}`}
       >
