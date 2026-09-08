@@ -93,7 +93,8 @@ discovers the endpoint from this command rather than assuming a fixed port.
 
 `phi-4-mini` (2.2 GB) is the recommended starting point. Larger models such as `phi-4` (8.8 GB)
 produce better plans but are slow without a supported GPU. List the options with
-`foundry model list --type chat`.
+`foundry model list --type chat`. The app automatically loads the selected downloaded model into
+memory before using it.
 
 #### Option 2: Azure OpenAI (better plan quality)
 

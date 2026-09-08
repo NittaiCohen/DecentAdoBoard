@@ -79,8 +79,9 @@ fn normalize_model_name(model: &str) -> String {
 
 /// Suffix tokens Foundry Local appends to an alias to name a hardware-specific build. Only
 /// these may separate a requested alias from a concrete variant ID.
-const EXECUTION_PROVIDER_TOKENS: [&str; 9] = [
-    "cpu", "gpu", "npu", "cuda", "dml", "directml", "webgpu", "qnn", "generic",
+const EXECUTION_PROVIDER_TOKENS: [&str; 11] = [
+    "instruct", "cpu", "gpu", "npu", "cuda", "dml", "directml", "webgpu", "openvino", "qnn",
+    "generic",
 ];
 
 fn is_hardware_variant_of(candidate: &str, wanted: &str) -> bool {
@@ -229,6 +230,38 @@ async fn list_models(http_client: &reqwest::Client, base_url: &str) -> Result<Ve
         .unwrap_or_default())
 }
 
+async fn load_model(model: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    let output = tokio::process::Command::new("cmd")
+        .args(["/c", "foundry", "model", "load", model, "--output", "json"])
+        .output()
+        .await;
+    #[cfg(not(windows))]
+    let output = tokio::process::Command::new("foundry")
+        .args(["model", "load", model, "--output", "json"])
+        .output()
+        .await;
+
+    let output =
+        output.map_err(|error| format!("Foundry Local could not load model '{model}': {error}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let details = if stderr.trim().is_empty() {
+        stdout.trim()
+    } else {
+        stderr.trim()
+    };
+    Err(if details.is_empty() {
+        format!("Foundry Local could not load model '{model}'")
+    } else {
+        format!("Foundry Local could not load model '{model}': {details}")
+    })
+}
+
 pub async fn resolve_config(http_client: &reqwest::Client) -> Result<FoundryLocalConfig, String> {
     let base_url = discover_base_url().await?;
     let available_models = list_models(http_client, &base_url).await?;
@@ -237,6 +270,10 @@ pub async fn resolve_config(http_client: &reqwest::Client) -> Result<FoundryLoca
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty());
     let model = choose_model(&available_models, requested_model.as_deref())?;
+    // Downloaded models are visible through `/v1/models` but the chat endpoint rejects them
+    // until they are loaded into the daemon. Loading is idempotent, so readiness checks can
+    // safely ensure the selected model is actually usable.
+    load_model(&model).await?;
     Ok(FoundryLocalConfig { base_url, model })
 }
 
@@ -327,6 +364,15 @@ mod tests {
             choose_model(&only_mini, Some("phi-4")).unwrap(),
             "phi-4",
             "an unmatched alias passes through for the service to resolve"
+        );
+    }
+
+    #[test]
+    fn matches_real_foundry_variant_id() {
+        let available = vec!["phi-4-mini-instruct-openvino-npu".to_string()];
+        assert_eq!(
+            choose_model(&available, Some("phi-4-mini")).unwrap(),
+            "phi-4-mini-instruct-openvino-npu"
         );
     }
 
