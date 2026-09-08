@@ -1,5 +1,6 @@
 #![deny(warnings)]
 
+mod ado_api;
 mod ado_client;
 mod ado_creation;
 mod ado_writes;
@@ -33,6 +34,8 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::set_config,
+            commands::get_board_work_item_types,
+            commands::get_work_item_type_icon,
             commands::set_pat,
             commands::login_az_cli,
             commands::get_board_data,
@@ -46,12 +49,16 @@ pub fn run() {
             commands::list_iteration_paths,
             commands::search_project_tags,
             commands::get_work_item_overview,
+            commands::get_work_item_type_fields,
+            commands::get_work_item_type_fields_batch,
+            commands::refresh_work_item_type_fields_batch,
             commands::get_work_item_comments,
             commands::add_work_item_comment,
             commands::search_identities,
             ado_writes::update_work_item_state,
             ado_writes::update_work_item_iteration,
             ado_writes::update_work_item_fields,
+            ado_writes::create_work_item,
             ado_writes::get_work_item_type_states,
             ado_writes::add_dependency,
             ado_writes::remove_dependency,

@@ -8,6 +8,7 @@ export {
   type IdentitySearchResult,
   type ProjectInfo,
   type TeamInfo,
+  type BoardWorkItemType,
   type WorkItemTypeState,
   type JsonValue,
   type WorkItemFieldDefinition,

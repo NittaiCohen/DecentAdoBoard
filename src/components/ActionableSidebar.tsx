@@ -4,6 +4,7 @@ import AssignedToDisplay from "./AssignedToDisplay";
 import { computeActionableSet } from "../utils/actionable";
 import StateDropdown from "./StateDropdown";
 import WorkItemTitleButton from "./WorkItemTitleButton";
+import WorkItemTypeIcon from "./WorkItemTypeIcon";
 
 interface ActionableSidebarProps {
   isOpen: boolean;
@@ -143,6 +144,7 @@ function ActionableNodeCard({
   return (
     <div className={`rounded border-l-4 ${padding} ${colorClass}`}>
       <div className="flex items-center gap-1.5 mb-1">
+        <WorkItemTypeIcon workItemType={node.workItem.type} className="h-3.5 w-3.5 shrink-0" />
         <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
           {`#${node.workItem.id}`}
         </span>

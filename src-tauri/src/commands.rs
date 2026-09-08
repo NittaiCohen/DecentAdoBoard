@@ -3,7 +3,9 @@ use tauri::State;
 use crate::ado_client;
 use crate::auth;
 use crate::models::*;
-use crate::state::AppState;
+use crate::state::{AppState, CachedWorkItemIcon};
+use base64::Engine;
+use chrono::Utc;
 
 const MAX_PROJECT_TAG_SEARCH_RESULTS: usize = 50;
 const MAX_COMMENT_PARSE_ERROR_BODY_LENGTH: usize = 8_000;
@@ -30,6 +32,110 @@ pub async fn set_config(
 }
 
 #[tauri::command]
+pub async fn get_board_work_item_types(
+    state: State<'_, AppState>,
+) -> Result<Vec<BoardWorkItemType>, String> {
+    let config = state.get_config()?;
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/{}/_apis/wit/workitemtypes?api-version=7.1",
+        config.organization, config.project
+    );
+
+    let response = state
+        .http_client
+        .get(&url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("Board work item types request failed: {e}"))?;
+    let response = ado_client::check_response(response, "Board work item types").await?;
+    let response: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("Board work item types parse error: {e}"))?;
+
+    let types = response["value"]
+        .as_array()
+        .ok_or_else(|| "Board work item types response did not contain a value array".to_string())?
+        .iter()
+        .filter_map(|work_item_type| {
+            Some(BoardWorkItemType {
+                name: work_item_type.get("name")?.as_str()?.to_string(),
+                reference_name: work_item_type.get("referenceName")?.as_str()?.to_string(),
+                icon_id: work_item_type
+                    .get("icon")
+                    .and_then(|icon| icon.get("id"))
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string),
+                color: work_item_type
+                    .get("color")
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string),
+            })
+        })
+        .collect::<Vec<_>>();
+
+    Ok(types)
+}
+
+#[tauri::command]
+pub async fn get_work_item_type_icon(
+    state: State<'_, AppState>,
+    icon_id: String,
+    color: String,
+) -> Result<String, String> {
+    let config = state.get_config()?;
+    let normalized_color = color.trim_start_matches('#').to_string();
+    let cache_key = format!("{}:{}:{}", config.organization, icon_id, normalized_color);
+    if let Some(data_url) = state.get_cached_work_item_icon(&cache_key).await {
+        return Ok(data_url);
+    }
+
+    let auth = state.get_bearer_token().await?;
+    let url = format!(
+        "https://dev.azure.com/{}/_apis/wit/workitemicons/{}?color={}&v=1&api-version=7.1",
+        config.organization,
+        urlencoding::encode(&icon_id),
+        urlencoding::encode(&normalized_color),
+    );
+    let response = state
+        .http_client
+        .get(&url)
+        .header("Authorization", &auth)
+        .send()
+        .await
+        .map_err(|e| format!("Work item icon request failed: {e}"))?;
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("image/svg+xml")
+        .to_string();
+    let response = ado_client::check_response(response, "Work item icon").await?;
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|e| format!("Work item icon response read error: {e}"))?;
+
+    let data_url = format!(
+        "data:{content_type};base64,{}",
+        base64::engine::general_purpose::STANDARD.encode(bytes),
+    );
+    state
+        .cache_work_item_icon(
+            cache_key,
+            CachedWorkItemIcon {
+                data_url: data_url.clone(),
+                fetched_at: Utc::now(),
+            },
+        )
+        .await?;
+
+    Ok(data_url)
+}
+
+#[tauri::command]
 pub async fn get_board_data(state: State<'_, AppState>) -> Result<BoardData, String> {
     let iterations = ado_client::fetch_iterations(&state).await?;
     let work_items = ado_client::fetch_work_items(&state).await?;
@@ -46,6 +152,33 @@ pub async fn get_work_item_overview(
     work_item_id: i64,
 ) -> Result<WorkItemOverview, String> {
     ado_client::fetch_work_item_overview(&state, work_item_id).await
+}
+
+#[tauri::command]
+pub async fn get_work_item_type_fields(
+    state: State<'_, AppState>,
+    work_item_type: String,
+) -> Result<Vec<AdoWorkItemFieldDefinition>, String> {
+    ado_client::fetch_work_item_type_fields(&state, &work_item_type).await
+}
+
+#[tauri::command]
+pub async fn get_work_item_type_fields_batch(
+    state: State<'_, AppState>,
+    work_item_types: Vec<String>,
+) -> Result<WorkItemTypeFieldsBatchResult, String> {
+    ado_client::fetch_work_item_type_fields_batch(&state, &work_item_types).await
+}
+
+#[tauri::command]
+pub async fn refresh_work_item_type_fields_batch(
+    state: State<'_, AppState>,
+    work_item_types: Vec<String>,
+) -> Result<std::collections::HashMap<String, Vec<AdoWorkItemFieldDefinition>>, String> {
+    let config = state.get_config()?;
+    let cache_key = format!("{}/{}", config.organization, config.project);
+    ado_client::refresh_work_item_type_fields_batch(&state, &work_item_types, &config, &cache_key)
+        .await
 }
 
 #[tauri::command]

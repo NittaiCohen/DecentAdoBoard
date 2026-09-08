@@ -3,6 +3,7 @@ import { Handle, Position, useStore, type NodeProps, type Node } from "@xyflow/r
 
 import StateDropdown from "./StateDropdown";
 import WorkItemTitleButton from "./WorkItemTitleButton";
+import WorkItemTypeIcon from "./WorkItemTypeIcon";
 import { DEFAULT_PARENT_GROUP_TYPE_COLOR, PARENT_GROUP_TYPE_COLORS } from "../utils/workItemColors";
 import type { BOARD_NODE_TYPES } from "../types/graph";
 
@@ -72,6 +73,7 @@ function ParentGroupComponent({ data, positionAbsoluteX }: NodeProps<ParentGroup
           transition: `left ${HEADER_SLIDE_DURATION_S}s ease-out, width ${HEADER_SLIDE_DURATION_S}s ease-out`,
         }}
       >
+        <WorkItemTypeIcon workItemType={data.workItemType} className="h-3.5 w-3.5 shrink-0" />
         <span className="text-[10px] font-mono text-gray-500 dark:text-gray-400">
           {data.previewMode ? "Preview" : `#${data.workItemId}`}
         </span>

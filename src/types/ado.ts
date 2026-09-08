@@ -31,7 +31,6 @@ export interface Iteration {
 export interface AdoConfig {
   organization: string;
   project: string;
-  team: string;
   areaPath: string;
 }
 
@@ -53,6 +52,13 @@ export interface ProjectInfo {
 export interface TeamInfo {
   id: string;
   name: string;
+}
+
+export interface BoardWorkItemType {
+  name: string;
+  referenceName: string;
+  iconId: string | null;
+  color: string | null;
 }
 
 export interface WorkItemTypeState {

@@ -1,22 +1,30 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { updateWorkItemFields } from "../api/tauri";
-import AssignedToSelector from "./AssignedToSelector";
 import TagsEditor from "./TagsEditor";
-import WorkItemPathSelector from "./WorkItemPathSelector";
+import WorkItemTypeIcon from "./WorkItemTypeIcon";
 import WorkItemComments from "./WorkItemComments";
-import RichTextFieldEditor from "./RichTextFieldEditor";
-import StateSelector from "./StateSelector";
 import {
   ALWAYS_VISIBLE_OVERVIEW_FIELD_REFERENCES,
   getDefaultOverviewFieldSelection,
   getOverviewFieldsForWorkItemType,
 } from "../config/overviewFields";
-import StateBadge from "./StateBadge";
 import { DEFAULT_TYPE_COLOR, TYPE_COLORS } from "../utils/workItemColors";
 import { useWorkItemComments, useWorkItemOverview } from "../hooks/useAdoData";
-import { useWorkItemTypeStates } from "../hooks/useWorkItemTypeStates";
-import { getOrderedStateOptions } from "../utils/workItemStates";
+import { FieldEditor, SpecialFieldEditor } from "./WorkItemFieldEditor";
+import {
+  ASSIGNED_TO_FIELD_REFERENCE,
+  AREA_PATH_FIELD_REFERENCE,
+  getHeaderFields,
+  getInputValue,
+  ITERATION_PATH_FIELD_REFERENCE,
+  RICH_TEXT_FIELD_ORDER,
+  SPECIAL_FIELD_REFERENCES,
+  STATE_FIELD_REFERENCE,
+  TAGS_FIELD_REFERENCE,
+  TITLE_FIELD_REFERENCE,
+  formatFieldValue,
+} from "../utils/workItemFieldEditor";
 import type {
   BoardData,
   JsonValue,
@@ -31,256 +39,12 @@ interface WorkItemOverviewProps {
   onClose: () => void;
 }
 
-function formatFieldValue(value: JsonValue): string {
-  if (value === null) {
-    return "Not set";
-  }
-
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-    return String(value);
-  }
-
-  if (Array.isArray(value)) {
-    return value.map(formatFieldValue).join(", ");
-  }
-
-  if (typeof value.displayName === "string") {
-    return value.displayName;
-  }
-
-  if (typeof value.uniqueName === "string") {
-    return value.uniqueName;
-  }
-
-  return JSON.stringify(value);
-}
-
-function isComplexField(fieldType: string): boolean {
-  return fieldType.toLowerCase() === "identity";
-}
-
-function getInputValue(value: JsonValue): string {
-  return value === null ? "" : formatFieldValue(value);
-}
-
 function getBoardAssignedToValue(value: JsonValue): string | null {
   if (value === null) {
     return null;
   }
 
   return formatFieldValue(value);
-}
-
-const TITLE_FIELD_REFERENCE = "System.Title";
-const STATE_FIELD_REFERENCE = "System.State";
-const ASSIGNED_TO_FIELD_REFERENCE = "System.AssignedTo";
-const TAGS_FIELD_REFERENCE = "System.Tags";
-const AREA_PATH_FIELD_REFERENCE = "System.AreaPath";
-const ITERATION_PATH_FIELD_REFERENCE = "System.IterationPath";
-const SPECIAL_FIELD_REFERENCES = new Set([
-  TITLE_FIELD_REFERENCE,
-  STATE_FIELD_REFERENCE,
-  ASSIGNED_TO_FIELD_REFERENCE,
-  TAGS_FIELD_REFERENCE,
-  AREA_PATH_FIELD_REFERENCE,
-  ITERATION_PATH_FIELD_REFERENCE,
-]);
-const HEADER_FIELD_ORDER = [
-  ASSIGNED_TO_FIELD_REFERENCE,
-  AREA_PATH_FIELD_REFERENCE,
-  STATE_FIELD_REFERENCE,
-  ITERATION_PATH_FIELD_REFERENCE,
-];
-const RICH_TEXT_FIELD_ORDER = [
-  "System.Description",
-  "Microsoft.VSTS.TCM.ReproSteps",
-  "Microsoft.VSTS.TCM.SystemInfo",
-  "Microsoft.VSTS.Common.AcceptanceCriteria",
-];
-
-function getHeaderFields(fields: WorkItemFieldDefinition[]): WorkItemFieldDefinition[] {
-  const fieldsByReference = new Map(fields.map((field) => [field.referenceName, field]));
-
-  return HEADER_FIELD_ORDER.flatMap((referenceName) => {
-    const field = fieldsByReference.get(referenceName);
-    return field ? [field] : [];
-  });
-}
-
-function parseInputValue(field: WorkItemFieldDefinition, inputValue: string): JsonValue {
-  const normalizedType = field.fieldType.toLowerCase();
-  if (normalizedType === "integer" || normalizedType === "picklistinteger") {
-    return inputValue === "" ? null : Number.parseInt(inputValue, 10);
-  }
-  if (normalizedType === "double") {
-    return inputValue === "" ? null : Number.parseFloat(inputValue);
-  }
-  return inputValue;
-}
-
-function FieldEditor({
-  field,
-  value,
-  onChange,
-}: {
-  field: WorkItemFieldDefinition;
-  value: JsonValue;
-  onChange: (value: JsonValue) => void;
-}) {
-  const normalizedType = field.fieldType.toLowerCase();
-  const disabled = field.readOnly || isComplexField(field.fieldType);
-  const inputClass =
-    "w-full rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1.5 text-sm";
-
-  if (normalizedType === "html") {
-    return (
-      <RichTextFieldEditor
-        label={field.name}
-        value={getInputValue(value)}
-        editable={!disabled}
-        onChange={(nextValue) => onChange(nextValue)}
-      />
-    );
-  }
-
-  if (disabled) {
-    return (
-      <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">
-        {formatFieldValue(value)}
-      </p>
-    );
-  }
-
-  if (field.allowedValues.length > 0) {
-    return (
-      <select
-        className={inputClass}
-        value={getInputValue(value)}
-        onChange={(event) => onChange(parseInputValue(field, event.target.value))}
-      >
-        <option value="">{"Not set"}</option>
-        {field.allowedValues.map((allowedValue) => (
-          <option key={getInputValue(allowedValue)} value={getInputValue(allowedValue)}>
-            {getInputValue(allowedValue)}
-          </option>
-        ))}
-      </select>
-    );
-  }
-
-  if (normalizedType === "boolean") {
-    return (
-      <input
-        type="checkbox"
-        checked={value === true}
-        onChange={(event) => onChange(event.target.checked)}
-        className="h-4 w-4"
-      />
-    );
-  }
-
-  if (normalizedType === "plaintext") {
-    return (
-      <textarea
-        className={`${inputClass} min-h-24`}
-        value={getInputValue(value)}
-        onChange={(event) => onChange(parseInputValue(field, event.target.value))}
-      />
-    );
-  }
-
-  return (
-    <input
-      type={normalizedType === "integer" || normalizedType === "double" ? "number" : "text"}
-      className={inputClass}
-      value={getInputValue(value)}
-      onChange={(event) => onChange(parseInputValue(field, event.target.value))}
-    />
-  );
-}
-
-function SpecialFieldEditor({
-  field,
-  workItemType,
-  value,
-  onChange,
-}: {
-  field: WorkItemFieldDefinition;
-  workItemType: string;
-  value: JsonValue;
-  onChange: (value: JsonValue) => void;
-}) {
-  if (field.referenceName === STATE_FIELD_REFERENCE) {
-    return (
-      <StateFieldEditor
-        field={field}
-        workItemType={workItemType}
-        value={value}
-        onChange={onChange}
-      />
-    );
-  }
-
-  if (field.referenceName === ASSIGNED_TO_FIELD_REFERENCE) {
-    return <AssignedToSelector value={value} disabled={field.readOnly} onChange={onChange} />;
-  }
-
-  if (field.referenceName === AREA_PATH_FIELD_REFERENCE) {
-    return (
-      <WorkItemPathSelector
-        pathType="area"
-        value={value}
-        disabled={field.readOnly}
-        onChange={onChange}
-      />
-    );
-  }
-
-  if (field.referenceName === ITERATION_PATH_FIELD_REFERENCE) {
-    return (
-      <WorkItemPathSelector
-        pathType="iteration"
-        value={value}
-        disabled={field.readOnly}
-        onChange={onChange}
-      />
-    );
-  }
-
-  return <FieldEditor field={field} value={value} onChange={onChange} />;
-}
-
-function StateFieldEditor({
-  field,
-  workItemType,
-  value,
-  onChange,
-}: {
-  field: WorkItemFieldDefinition;
-  workItemType: string;
-  value: JsonValue;
-  onChange: (value: JsonValue) => void;
-}) {
-  const state = getInputValue(value) || "Not set";
-  const stateOptions = field.allowedValues;
-  const { data: stateDefinitions = [] } = useWorkItemTypeStates(workItemType);
-  const orderedStateOptions = getOrderedStateOptions(
-    stateDefinitions,
-    stateOptions.map(getInputValue),
-  );
-
-  if (field.readOnly) {
-    return <StateBadge state={state} />;
-  }
-
-  return (
-    <StateSelector
-      value={state}
-      options={orderedStateOptions}
-      ariaLabel={field.name}
-      onChange={(nextState) => onChange(parseInputValue(field, nextState))}
-    />
-  );
 }
 
 function FieldConfiguration({
@@ -512,9 +276,10 @@ function OverviewContent({
         className={`flex items-start justify-between gap-4 border-b border-gray-200 px-6 py-4 dark:border-gray-700 ${typeColorClass} border-l-4`}
       >
         <div className="min-w-0 flex-1 space-y-3">
-          <p className="text-xs text-gray-500 dark:text-gray-400">
-            {`${overview.workItemType} #${overview.id}`}
-          </p>
+          <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+            <WorkItemTypeIcon workItemType={overview.workItemType} className="h-4 w-4" />
+            <span>{`${overview.workItemType} #${overview.id}`}</span>
+          </div>
           <input
             type="text"
             value={getInputValue(draftFields[TITLE_FIELD_REFERENCE])}

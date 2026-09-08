@@ -156,6 +156,16 @@ pub struct TeamInfo {
     pub name: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct BoardWorkItemType {
+    pub name: String,
+    #[serde(rename = "referenceName")]
+    pub reference_name: String,
+    #[serde(rename = "iconId")]
+    pub icon_id: Option<String>,
+    pub color: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ClassificationNodeResponse {
     pub name: String,
@@ -220,6 +230,15 @@ pub struct AdoWorkItemFieldDefinition {
     pub always_required: bool,
     #[serde(rename = "allowedValues", default)]
     pub allowed_values: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WorkItemTypeFieldsBatchResult {
+    #[serde(rename = "fieldDefinitionsByType")]
+    pub field_definitions_by_type:
+        std::collections::HashMap<String, Vec<AdoWorkItemFieldDefinition>>,
+    #[serde(rename = "fromCache")]
+    pub from_cache: bool,
 }
 
 fn default_field_type() -> String {

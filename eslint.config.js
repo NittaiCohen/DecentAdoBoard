@@ -28,7 +28,7 @@ export default tseslint.config(
       "@eslint-react/set-state-in-effect": "off",
       "react-hooks/set-state-in-effect": "off",
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
-      "no-console": "warn",
+      "no-console": ["warn", { allow: ["error"] }],
       "no-restricted-syntax": [
         "error",
         {

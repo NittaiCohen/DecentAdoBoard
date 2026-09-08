@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import DOMPurify from "dompurify";
-import type { Editor } from "@tiptap/core";
+import { Extension, type CommandProps, type Editor } from "@tiptap/core";
+import type { Node as ProseMirrorNode } from "@tiptap/pm/model";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Highlight from "@tiptap/extension-highlight";
@@ -35,22 +36,140 @@ interface RichTextFieldEditorProps {
   initiallyExpanded?: boolean;
 }
 
-const editorExtensions = [
-  StarterKit,
-  UnderlineExtension,
-  Highlight.configure({ multicolor: true }),
-  ImageExtension,
-  LinkExtension.configure({ autolink: true, openOnClick: false }),
-  TextStyleKit,
-];
 const TOOLBAR_ICON_SIZE = 16;
 const HEADING_LEVEL_ONE = 1;
 const HEADING_LEVEL_TWO = 2;
 const HEADING_LEVEL_THREE = 3;
 const HEADING_LEVELS = [HEADING_LEVEL_ONE, HEADING_LEVEL_TWO, HEADING_LEVEL_THREE] as const;
+const INDENT_STEP = 2;
+const MAX_INDENT_LEVEL = 8;
+const INDENTABLE_NODE_NAMES = new Set(["heading", "listItem", "paragraph"]);
+const URL_SCHEME_PATTERN = /^[a-z][a-z\d+.-]*:/i;
+
+declare module "@tiptap/core" {
+  interface Commands<ReturnType> {
+    indentation: {
+      increaseIndent: () => ReturnType;
+      decreaseIndent: () => ReturnType;
+    };
+  }
+}
+
+function getIndentLevel(node: { attrs: Record<string, unknown> }): number {
+  const indent = node.attrs.indent;
+  return typeof indent === "number" ? indent : 0;
+}
+
+function changeBlockIndent({ state, dispatch }: CommandProps, direction: 1 | -1): boolean {
+  const positions = new Set<number>();
+  const addIndentableNode = (node: ProseMirrorNode, position: number) => {
+    if (INDENTABLE_NODE_NAMES.has(node.type.name)) {
+      positions.add(position);
+    }
+  };
+
+  if (state.selection.empty) {
+    for (let depth = state.selection.$from.depth; depth > 0; depth -= 1) {
+      const node = state.selection.$from.node(depth);
+      if (INDENTABLE_NODE_NAMES.has(node.type.name)) {
+        positions.add(state.selection.$from.before(depth));
+        break;
+      }
+    }
+  } else {
+    state.doc.nodesBetween(state.selection.from, state.selection.to, addIndentableNode);
+  }
+
+  if (positions.size === 0) {
+    return false;
+  }
+
+  let changed = false;
+  for (const position of positions) {
+    const node = state.tr.doc.nodeAt(position);
+    if (!node) {
+      continue;
+    }
+
+    const currentIndent = getIndentLevel(node);
+    const nextIndent = Math.max(0, Math.min(MAX_INDENT_LEVEL, currentIndent + direction));
+    if (nextIndent === currentIndent) {
+      continue;
+    }
+
+    state.tr.setNodeMarkup(position, undefined, {
+      ...node.attrs,
+      indent: nextIndent,
+    });
+    changed = true;
+  }
+
+  if (changed) {
+    dispatch?.(state.tr);
+  }
+
+  return changed;
+}
+
+const IndentationExtension = Extension.create({
+  name: "indentation",
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: [...INDENTABLE_NODE_NAMES],
+        attributes: {
+          indent: {
+            default: 0,
+            parseHTML: (element: HTMLElement) => {
+              const marginLeft = Number.parseFloat(element.style.marginLeft);
+              return Number.isFinite(marginLeft) ? Math.round(marginLeft / INDENT_STEP) : 0;
+            },
+            renderHTML: (attributes: Record<string, unknown>) => {
+              const indent = typeof attributes.indent === "number" ? attributes.indent : 0;
+              if (indent <= 0) {
+                return {};
+              }
+
+              return { style: `margin-left: ${indent * INDENT_STEP}em` };
+            },
+          },
+        },
+      },
+    ];
+  },
+
+  addCommands() {
+    return {
+      increaseIndent: () => (props) => changeBlockIndent(props, 1),
+      decreaseIndent: () => (props) => changeBlockIndent(props, -1),
+    };
+  },
+});
+
+const editorExtensions = [
+  StarterKit,
+  UnderlineExtension,
+  Highlight.configure({ multicolor: true }),
+  ImageExtension,
+  LinkExtension.configure({ autolink: true, defaultProtocol: "https", openOnClick: false }),
+  TextStyleKit,
+  IndentationExtension,
+];
 
 function sanitizeHtml(value: string): string {
   return DOMPurify.sanitize(value);
+}
+
+function normalizeLinkUrl(value: string): string {
+  const trimmedValue = value.trim();
+  if (trimmedValue.startsWith("//")) {
+    return `https:${trimmedValue}`;
+  }
+  if (URL_SCHEME_PATTERN.test(trimmedValue)) {
+    return trimmedValue;
+  }
+  return `https://${trimmedValue}`;
 }
 
 function hasRichTextContent(value: string): boolean {
@@ -94,6 +213,26 @@ function ToolbarButton({
 }
 
 function RichTextToolbar({ editor }: { editor: Editor }) {
+  function changeIndent(direction: 1 | -1) {
+    if (editor.isActive("listItem")) {
+      const listChain = editor.chain().focus();
+      const changedList =
+        direction > 0
+          ? listChain.sinkListItem("listItem").run()
+          : listChain.liftListItem("listItem").run();
+      if (changedList) {
+        return;
+      }
+    }
+
+    const indentChain = editor.chain().focus();
+    if (direction > 0) {
+      indentChain.increaseIndent().run();
+    } else {
+      indentChain.decreaseIndent().run();
+    }
+  }
+
   function setLink() {
     const url = window.prompt("Link URL", "");
     if (url === null) {
@@ -105,7 +244,11 @@ function RichTextToolbar({ editor }: { editor: Editor }) {
       return;
     }
 
-    editor.chain().focus().setLink({ href: url.trim() }).run();
+    editor
+      .chain()
+      .focus()
+      .setLink({ href: normalizeLinkUrl(url) })
+      .run();
   }
 
   function insertImage() {
@@ -156,12 +299,12 @@ function RichTextToolbar({ editor }: { editor: Editor }) {
       <ToolbarButton
         label="Outdent"
         icon={<ListIndentDecrease size={TOOLBAR_ICON_SIZE} />}
-        onClick={() => editor.chain().focus().liftListItem("listItem").run()}
+        onClick={() => changeIndent(-1)}
       />
       <ToolbarButton
         label="Indent"
         icon={<ListIndentIncrease size={TOOLBAR_ICON_SIZE} />}
-        onClick={() => editor.chain().focus().sinkListItem("listItem").run()}
+        onClick={() => changeIndent(1)}
       />
       <ToolbarButton
         label="Highlight"
@@ -309,7 +452,7 @@ export default function RichTextFieldEditor({
         >
           <EditorContent
             editor={editor}
-            className="min-h-40 bg-white px-3 py-2 text-sm text-gray-900 outline-none dark:bg-gray-900 dark:text-gray-100 [&_.ProseMirror]:min-h-40 [&_.ProseMirror]:outline-none [&_.ProseMirror_a]:text-blue-600 [&_.ProseMirror_a]:underline [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-6 [&_.ProseMirror_p]:mb-2 [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:bg-gray-100 [&_.ProseMirror_pre]:p-2 [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-6"
+            className="min-h-40 bg-white px-3 py-2 text-sm text-gray-900 outline-none dark:bg-gray-900 dark:text-gray-100 [&_.ProseMirror]:min-h-40 [&_.ProseMirror]:outline-none [&_.ProseMirror_a]:text-blue-600 [&_.ProseMirror_a]:underline [&_.ProseMirror_h1]:mb-3 [&_.ProseMirror_h1]:text-2xl [&_.ProseMirror_h1]:font-bold [&_.ProseMirror_h2]:mb-2 [&_.ProseMirror_h2]:text-xl [&_.ProseMirror_h2]:font-bold [&_.ProseMirror_h3]:mb-2 [&_.ProseMirror_h3]:text-lg [&_.ProseMirror_h3]:font-semibold [&_.ProseMirror_ol]:list-decimal [&_.ProseMirror_ol]:pl-6 [&_.ProseMirror_p]:mb-2 [&_.ProseMirror_pre]:overflow-x-auto [&_.ProseMirror_pre]:rounded [&_.ProseMirror_pre]:bg-gray-100 [&_.ProseMirror_pre]:p-2 [&_.ProseMirror_ul]:list-disc [&_.ProseMirror_ul]:pl-6"
           />
           {editable && isSelected && <RichTextToolbar editor={editor} />}
         </div>

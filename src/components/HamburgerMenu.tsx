@@ -6,9 +6,14 @@ import { THEME_LABELS, THEME_ICONS } from "../utils/themeConstants";
 interface HamburgerMenuProps {
   onChangeProject: () => void;
   onSignOut: () => void;
+  onCreateWorkItem: () => void;
 }
 
-export default function HamburgerMenu({ onChangeProject, onSignOut }: HamburgerMenuProps) {
+export default function HamburgerMenu({
+  onChangeProject,
+  onSignOut,
+  onCreateWorkItem,
+}: HamburgerMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -46,6 +51,15 @@ export default function HamburgerMenu({ onChangeProject, onSignOut }: HamburgerM
         title="Menu"
       >
         {"☰"}
+      </button>
+      <button
+        type="button"
+        onClick={onCreateWorkItem}
+        className="absolute top-14 left-3 z-20 flex h-8 w-8 items-center justify-center rounded bg-gray-200 text-lg font-medium text-gray-700 shadow transition-colors hover:bg-gray-300 dark:bg-gray-700 dark:text-gray-300 dark:hover:bg-gray-600"
+        title="Create work item"
+        aria-label="Create work item"
+      >
+        {"+"}
       </button>
 
       {/* Backdrop */}

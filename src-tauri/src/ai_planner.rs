@@ -3,12 +3,14 @@ use std::collections::{HashMap, HashSet};
 use chrono::Datelike;
 use tauri::State;
 
-use crate::ado_client::{check_response, fetch_iterations, fetch_work_items};
+use crate::ado_client::{
+    check_response, fetch_iterations, fetch_work_item_type_states, fetch_work_items,
+};
 use crate::auth::get_az_cli_resource_access_token;
 use crate::foundry_local;
 use crate::models::{
     AdoWorkItemTypeState, AiPlannerContext, AiWorkItemTypeMetadata, GenerateWorkItemPlanRequest,
-    GeneratedWorkItemPlan, WorkItemTypeStatesResponse, WorkItemTypesResponse,
+    GeneratedWorkItemPlan, WorkItemTypesResponse,
 };
 use crate::state::AppState;
 
@@ -68,28 +70,7 @@ async fn fetch_work_item_states(
     state: &AppState,
     work_item_type: &str,
 ) -> Result<Vec<AdoWorkItemTypeState>, String> {
-    let config = state.get_config()?;
-    let auth = state.get_bearer_token().await?;
-    let encoded_type = urlencoding::encode(work_item_type);
-    let url = format!(
-        "https://dev.azure.com/{}/{}/_apis/wit/workitemtypes/{}/states?api-version=7.1",
-        config.organization, config.project, encoded_type
-    );
-
-    let response = state
-        .http_client
-        .get(url)
-        .header("Authorization", auth)
-        .send()
-        .await
-        .map_err(|error| format!("Failed to fetch states for '{work_item_type}': {error}"))?;
-    let response =
-        check_response(response, &format!("Fetch states for '{work_item_type}'")).await?;
-    let body: WorkItemTypeStatesResponse = response
-        .json()
-        .await
-        .map_err(|error| format!("Failed to parse states for '{work_item_type}': {error}"))?;
-    Ok(body.value)
+    fetch_work_item_type_states(state, work_item_type).await
 }
 
 async fn fetch_work_item_type_metadata(

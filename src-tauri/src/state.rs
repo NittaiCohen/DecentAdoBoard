@@ -1,24 +1,48 @@
 use crate::audit_log::AuditLog;
 use crate::auth::OAuthTokens;
-use crate::models::AdoConfig;
+use crate::models::{AdoConfig, AdoWorkItemFieldDefinition};
+use chrono::{DateTime, Duration, Utc};
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
 const TOKENS_FILE: &str = "auth_tokens.json";
+const ICON_CACHE_FILE: &str = "work_item_icon_cache.json";
+const WORK_ITEM_FIELDS_CACHE_FILE: &str = "work_item_fields_cache.json";
+const ICON_CACHE_TTL: Duration = Duration::days(1);
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedWorkItemIcon {
+    pub data_url: String,
+    pub fetched_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CachedWorkItemFields {
+    pub field_definitions: Vec<AdoWorkItemFieldDefinition>,
+    pub fetched_at: DateTime<Utc>,
+}
 
 pub struct AppState {
     pub config: std::sync::Mutex<Option<AdoConfig>>,
-    pub token: Mutex<Option<OAuthTokens>>,
+    pub token: Arc<Mutex<Option<OAuthTokens>>>,
     pub http_client: reqwest::Client,
     pub audit_log: AuditLog,
     pub data_dir: std::path::PathBuf,
+    pub icon_cache: Mutex<HashMap<String, CachedWorkItemIcon>>,
+    pub work_item_fields_cache: Arc<Mutex<HashMap<String, CachedWorkItemFields>>>,
 }
 
 impl AppState {
     pub fn new(data_dir: std::path::PathBuf) -> Self {
         let audit_log = AuditLog::new(&data_dir);
+        let icon_cache = Self::load_icon_cache(&data_dir);
+        let work_item_fields_cache = Self::load_work_item_fields_cache(&data_dir);
         Self {
             config: std::sync::Mutex::new(None),
-            token: Mutex::new(None),
+            token: Arc::new(Mutex::new(None)),
             http_client: reqwest::Client::builder()
                 .user_agent("DecentAdoBoard/0.1")
                 .timeout(std::time::Duration::from_secs(30))
@@ -26,7 +50,116 @@ impl AppState {
                 .expect("failed to create HTTP client"),
             audit_log,
             data_dir,
+            icon_cache: Mutex::new(icon_cache),
+            work_item_fields_cache: Arc::new(Mutex::new(work_item_fields_cache)),
         }
+    }
+
+    fn icon_cache_path(data_dir: &std::path::Path) -> std::path::PathBuf {
+        data_dir.join(ICON_CACHE_FILE)
+    }
+
+    fn load_icon_cache(data_dir: &std::path::Path) -> HashMap<String, CachedWorkItemIcon> {
+        let Ok(content) = std::fs::read_to_string(Self::icon_cache_path(data_dir)) else {
+            return HashMap::new();
+        };
+        let Ok(cache) = serde_json::from_str::<HashMap<String, CachedWorkItemIcon>>(&content)
+        else {
+            return HashMap::new();
+        };
+        let cutoff = Utc::now() - ICON_CACHE_TTL;
+        cache
+            .into_iter()
+            .filter(|(_, icon)| icon.fetched_at > cutoff)
+            .collect()
+    }
+
+    fn work_item_fields_cache_path(data_dir: &Path) -> std::path::PathBuf {
+        data_dir.join(WORK_ITEM_FIELDS_CACHE_FILE)
+    }
+
+    fn load_work_item_fields_cache(data_dir: &Path) -> HashMap<String, CachedWorkItemFields> {
+        let Ok(content) = std::fs::read_to_string(Self::work_item_fields_cache_path(data_dir))
+        else {
+            return HashMap::new();
+        };
+        serde_json::from_str(&content).unwrap_or_default()
+    }
+
+    pub async fn get_cached_work_item_fields(
+        &self,
+        cache_key: &str,
+        work_item_types: &[String],
+    ) -> Option<HashMap<String, Vec<AdoWorkItemFieldDefinition>>> {
+        let cache = self.work_item_fields_cache.lock().await;
+        let mut definitions = HashMap::new();
+        for work_item_type in work_item_types {
+            let entry = cache.get(&format!("{cache_key}:{work_item_type}"))?;
+            definitions.insert(work_item_type.clone(), entry.field_definitions.clone());
+        }
+        Some(definitions)
+    }
+
+    pub async fn save_work_item_fields(
+        &self,
+        cache_key: &str,
+        definitions: &HashMap<String, Vec<AdoWorkItemFieldDefinition>>,
+    ) -> Result<(), String> {
+        Self::save_work_item_fields_cache(
+            &self.work_item_fields_cache,
+            &self.data_dir,
+            cache_key,
+            definitions,
+        )
+        .await
+    }
+
+    pub async fn cache_work_item_icon(
+        &self,
+        cache_key: String,
+        icon: CachedWorkItemIcon,
+    ) -> Result<(), String> {
+        let mut cache = self.icon_cache.lock().await;
+        cache.insert(cache_key, icon);
+        let json = serde_json::to_string(&*cache)
+            .map_err(|e| format!("Failed to serialize work item icon cache: {e}"))?;
+        std::fs::create_dir_all(&self.data_dir)
+            .map_err(|e| format!("Failed to create icon cache directory: {e}"))?;
+        std::fs::write(Self::icon_cache_path(&self.data_dir), json)
+            .map_err(|e| format!("Failed to write work item icon cache: {e}"))
+    }
+
+    pub async fn save_work_item_fields_cache(
+        cache: &Arc<Mutex<HashMap<String, CachedWorkItemFields>>>,
+        data_dir: &Path,
+        cache_key: &str,
+        definitions: &HashMap<String, Vec<AdoWorkItemFieldDefinition>>,
+    ) -> Result<(), String> {
+        let mut cache_guard = cache.lock().await;
+        for (work_item_type, field_definitions) in definitions {
+            cache_guard.insert(
+                format!("{cache_key}:{work_item_type}"),
+                CachedWorkItemFields {
+                    field_definitions: field_definitions.clone(),
+                    fetched_at: Utc::now(),
+                },
+            );
+        }
+        let json = serde_json::to_string(&*cache_guard)
+            .map_err(|e| format!("Failed to serialize work item field cache: {e}"))?;
+        std::fs::create_dir_all(data_dir)
+            .map_err(|e| format!("Failed to create work item field cache directory: {e}"))?;
+        std::fs::write(AppState::work_item_fields_cache_path(data_dir), json)
+            .map_err(|e| format!("Failed to write work item field cache: {e}"))
+    }
+
+    pub async fn get_cached_work_item_icon(&self, cache_key: &str) -> Option<String> {
+        let cache = self.icon_cache.lock().await;
+        let cached_icon = cache.get(cache_key)?;
+        if cached_icon.fetched_at <= Utc::now() - ICON_CACHE_TTL {
+            return None;
+        }
+        Some(cached_icon.data_url.clone())
     }
 
     pub fn get_config(&self) -> Result<AdoConfig, String> {
