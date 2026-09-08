@@ -12,6 +12,7 @@ import type { AiPlannerContext, GeneratedWorkItemPlan, SubmitWorkItemPlanResult 
 import { generateWorkItemPlan, getAiPlannerContext, submitWorkItemPlan } from "../api/tauri";
 import { createGeneratedPlanPreview } from "../utils/generatedPlanPreview";
 import GraphView, { type GraphPreviewActions } from "./GraphView";
+import AiPreviewWorkItemOverview from "./AiPreviewWorkItemOverview";
 
 type ModalStep =
   | "describe"
@@ -106,6 +107,9 @@ function usePreviewActions(
                 ...currentPlan,
                 items: currentPlan.items.map((item) =>
                   item.temporaryId === targetTemporaryId &&
+                  item.parentTemporaryId !== sourceTemporaryId &&
+                  currentPlan.items.find((candidate) => candidate.temporaryId === sourceTemporaryId)
+                    ?.parentTemporaryId !== targetTemporaryId &&
                   !item.dependencyTemporaryIds.includes(sourceTemporaryId)
                     ? {
                         ...item,
@@ -159,6 +163,7 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
   const [existingAdoIds, setExistingAdoIds] = useState<Record<string, number>>({});
   const [submissionId, setSubmissionId] = useState("");
   const [isSubmissionLocked, setIsSubmissionLocked] = useState(false);
+  const [openPreviewTemporaryId, setOpenPreviewTemporaryId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const missionInputRef = useRef<HTMLTextAreaElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -196,6 +201,7 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
     setExistingAdoIds({});
     setSubmissionId(globalThis.crypto.randomUUID());
     setIsSubmissionLocked(false);
+    setOpenPreviewTemporaryId(null);
     document.body.style.overflow = "hidden";
     requestAnimationFrame(() => missionInputRef.current?.focus());
     loadContext();
@@ -316,6 +322,8 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
 
   const isBusy = step === "generating" || step === "submitting";
   const hasPartialSubmission = isSubmissionLocked && step !== "success";
+  const openPreviewItem =
+    plan?.items.find((item) => item.temporaryId === openPreviewTemporaryId) ?? null;
 
   return (
     <div
@@ -463,7 +471,16 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
                 aria-label="Generated work-item graph"
                 className="h-[500px] overflow-hidden rounded-lg border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-950"
               >
-                <GraphView boardData={preview.boardData} previewActions={previewActions} />
+                <GraphView
+                  boardData={preview.boardData}
+                  previewActions={previewActions}
+                  onOpenWorkItem={(previewId) => {
+                    const temporaryId = preview.temporaryIdByPreviewId.get(previewId);
+                    if (temporaryId) {
+                      setOpenPreviewTemporaryId(temporaryId);
+                    }
+                  }}
+                />
               </div>
 
               <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
@@ -611,6 +628,51 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
           )}
         </div>
       </div>
+      {plan && context && openPreviewItem && (
+        <AiPreviewWorkItemOverview
+          key={openPreviewItem.temporaryId}
+          item={openPreviewItem}
+          plan={plan}
+          context={context}
+          onClose={() => setOpenPreviewTemporaryId(null)}
+          onSave={(updatedItem) => {
+            setPlan((currentPlan) => {
+              if (!currentPlan) {
+                return currentPlan;
+              }
+              const updatedItems = currentPlan.items.map((item) =>
+                item.temporaryId === updatedItem.temporaryId ? updatedItem : item,
+              );
+              const hierarchyNormalizedItems = updatedItems.map((item) => ({
+                ...item,
+                parentTemporaryId:
+                  updatedItem.type === "Task" &&
+                  item.type === "Task" &&
+                  item.parentTemporaryId === updatedItem.temporaryId
+                    ? null
+                    : item.parentTemporaryId,
+              }));
+              const parentByChild = new Map<string, string>();
+              for (const item of hierarchyNormalizedItems) {
+                if (item.parentTemporaryId) {
+                  parentByChild.set(item.temporaryId, item.parentTemporaryId);
+                }
+              }
+              return {
+                ...currentPlan,
+                items: hierarchyNormalizedItems.map((item) => ({
+                  ...item,
+                  dependencyTemporaryIds: item.dependencyTemporaryIds.filter(
+                    (dependencyTemporaryId) =>
+                      item.parentTemporaryId !== dependencyTemporaryId &&
+                      parentByChild.get(dependencyTemporaryId) !== item.temporaryId,
+                  ),
+                })),
+              };
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

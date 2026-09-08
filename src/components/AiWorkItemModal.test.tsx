@@ -74,9 +74,11 @@ vi.mock("./GraphView", () => ({
   default: ({
     boardData,
     previewActions,
+    onOpenWorkItem,
   }: {
     boardData?: BoardData;
     previewActions?: GraphPreviewActions;
+    onOpenWorkItem?: (workItemId: number) => void;
   }) => (
     <div data-testid="mock-graph-view">
       {boardData?.work_items.map((workItem) => (
@@ -94,7 +96,38 @@ vi.mock("./GraphView", () => ({
       >
         {"Change preview state"}
       </button>
+      <button
+        onClick={() => {
+          const workItem = boardData?.work_items[0];
+          if (workItem) {
+            onOpenWorkItem?.(workItem.id);
+          }
+        }}
+      >
+        {"Open preview overview"}
+      </button>
     </div>
+  ),
+}));
+
+vi.mock("./RichTextFieldEditor", () => ({
+  default: ({
+    label,
+    value,
+    onChange,
+  }: {
+    label: string;
+    value: string;
+    onChange: (value: string) => void;
+  }) => (
+    <label>
+      {label}
+      <textarea
+        aria-label={label}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </label>
   ),
 }));
 
@@ -158,6 +191,20 @@ describe("AiWorkItemModal", () => {
     fireEvent.click(screen.getByText("Change preview state"));
 
     expect(screen.getByText(/Create an AI planning experience \| Active/)).toBeTruthy();
+  });
+
+  it("edits a temporary item through the preview overview without writing to ADO", async () => {
+    renderModal();
+    await generatePreview();
+
+    fireEvent.click(screen.getByText("Open preview overview"));
+    fireEvent.change(screen.getByLabelText("Title"), {
+      target: { value: "Edited preview title" },
+    });
+    fireEvent.click(screen.getByText("Save preview changes"));
+
+    expect(screen.getByText(/Edited preview title/)).toBeTruthy();
+    expect(mocks.submitWorkItemPlan).not.toHaveBeenCalled();
   });
 
   it("regenerates using the current plan and refinement request", async () => {

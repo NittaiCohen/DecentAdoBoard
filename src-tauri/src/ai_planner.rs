@@ -397,6 +397,12 @@ Rules:
 - Every field is required. Never return null except for parentTemporaryId when an item has no parent.
 - Use an empty string for an unknown description or acceptanceCriteria.
 - Use an empty array for dependencyTemporaryIds when there are no dependencies.
+- Parent-child means hierarchy: the child is part of the parent's scope (for example, a Task
+  belongs under a User Story). Dependency means execution order: one peer item must finish before
+  another can proceed.
+- Never represent the same pair as both parent-child and dependency, in either direction.
+- Do not make one Task the parent of another Task. When the user asks for tasks with dependencies,
+  keep them as peer tasks with parentTemporaryId set to null and use dependencyTemporaryIds only.
 - Use the initialState for each type unless the user explicitly requests another valid state.
 - Use currentIterationPath unless the user explicitly requests another listed iteration. If no
   iterations are listed, use an empty string.
@@ -621,18 +627,42 @@ fn sanitize_plan_references(plan: &mut GeneratedWorkItemPlan) {
         .iter()
         .map(|item| item.temporary_id.clone())
         .collect();
+    let work_item_type_by_id: HashMap<String, String> = plan
+        .items
+        .iter()
+        .map(|item| (item.temporary_id.clone(), item.work_item_type.clone()))
+        .collect();
 
     for item in &mut plan.items {
         if item.parent_temporary_id.as_ref().is_some_and(|parent_id| {
-            parent_id == &item.temporary_id || !temporary_ids.contains(parent_id)
+            parent_id == &item.temporary_id
+                || !temporary_ids.contains(parent_id)
+                || work_item_type_by_id
+                    .get(parent_id)
+                    .is_some_and(|parent_type| {
+                        parent_type == "Task" && item.work_item_type == "Task"
+                    })
         }) {
             item.parent_temporary_id = None;
         }
+    }
 
+    let parent_by_child: HashMap<String, String> = plan
+        .items
+        .iter()
+        .filter_map(|item| {
+            item.parent_temporary_id
+                .as_ref()
+                .map(|parent_id| (item.temporary_id.clone(), parent_id.clone()))
+        })
+        .collect();
+    for item in &mut plan.items {
         let mut seen_dependencies = HashSet::new();
         item.dependency_temporary_ids.retain(|dependency_id| {
             dependency_id != &item.temporary_id
                 && temporary_ids.contains(dependency_id)
+                && parent_by_child.get(&item.temporary_id) != Some(dependency_id)
+                && parent_by_child.get(dependency_id) != Some(&item.temporary_id)
                 && seen_dependencies.insert(dependency_id.clone())
         });
     }
@@ -770,14 +800,27 @@ pub(crate) fn validate_plan(
         }
     }
 
+    let item_by_temporary_id: HashMap<&str, &crate::models::GeneratedWorkItem> = plan
+        .items
+        .iter()
+        .map(|item| (item.temporary_id.as_str(), item))
+        .collect();
     let mut hierarchy_edges = HashMap::<String, Vec<String>>::new();
     let mut dependency_edges = HashMap::<String, Vec<String>>::new();
     for item in &plan.items {
         if let Some(parent_id) = &item.parent_temporary_id {
-            if !temporary_ids.contains(parent_id.as_str()) {
+            let parent = item_by_temporary_id
+                .get(parent_id.as_str())
+                .ok_or_else(|| {
+                    format!(
+                        "Work item '{}' references missing parent '{}'",
+                        item.temporary_id, parent_id
+                    )
+                })?;
+            if parent.work_item_type == "Task" && item.work_item_type == "Task" {
                 return Err(format!(
-                    "Work item '{}' references missing parent '{}'",
-                    item.temporary_id, parent_id
+                    "Tasks '{}' and '{}' must be peers, not parent-child",
+                    parent_id, item.temporary_id
                 ));
             }
             hierarchy_edges
@@ -790,6 +833,18 @@ pub(crate) fn validate_plan(
                 return Err(format!(
                     "Work item '{}' references missing dependency '{}'",
                     item.temporary_id, predecessor_id
+                ));
+            }
+            let predecessor_is_parent =
+                item.parent_temporary_id.as_deref() == Some(predecessor_id.as_str());
+            let predecessor_is_child = item_by_temporary_id
+                .get(predecessor_id.as_str())
+                .and_then(|predecessor| predecessor.parent_temporary_id.as_deref())
+                == Some(item.temporary_id.as_str());
+            if predecessor_is_parent || predecessor_is_child {
+                return Err(format!(
+                    "Work items '{}' and '{}' cannot be both parent-child and dependency-linked",
+                    predecessor_id, item.temporary_id
                 ));
             }
             dependency_edges
@@ -1207,6 +1262,127 @@ mod tests {
         assert_eq!(plan.items[0].parent_temporary_id, None);
         assert!(plan.items[0].dependency_temporary_ids.is_empty());
         assert_eq!(validate_plan(&plan, &context()), Ok(()));
+    }
+
+    #[test]
+    fn keeps_same_type_items_as_dependency_linked_peers() {
+        let request = GenerateWorkItemPlanRequest {
+            mission: "Create two tasks with a dependency".to_string(),
+            refinement_request: None,
+            current_plan: None,
+        };
+        let response = r#"{
+            "mission": "Create two tasks with a dependency",
+            "items": [{
+                "temporaryId": "task-1",
+                "parentTemporaryId": null,
+                "type": "Task",
+                "state": "Proposed",
+                "title": "Prepare",
+                "description": "",
+                "acceptanceCriteria": "",
+                "iterationPath": "Project\\Current",
+                "assignedTo": "user@example.com",
+                "dependencyTemporaryIds": []
+            }, {
+                "temporaryId": "task-2",
+                "parentTemporaryId": "task-1",
+                "type": "Task",
+                "state": "Proposed",
+                "title": "Present",
+                "description": "",
+                "acceptanceCriteria": "",
+                "iterationPath": "Project\\Current",
+                "assignedTo": "user@example.com",
+                "dependencyTemporaryIds": ["task-1"]
+            }]
+        }"#;
+
+        let plan = parse_generated_plan(response, &context(), &request).unwrap();
+        assert_eq!(plan.items[1].parent_temporary_id, None);
+        assert_eq!(plan.items[1].dependency_temporary_ids, vec!["task-1"]);
+        assert_eq!(validate_plan(&plan, &context()), Ok(()));
+    }
+
+    #[test]
+    fn preserves_non_task_same_type_hierarchy() {
+        let mut planner_context = context();
+        planner_context
+            .work_item_types
+            .push(AiWorkItemTypeMetadata {
+                name: "Feature".to_string(),
+                initial_state: "Proposed".to_string(),
+                states: vec!["Proposed".to_string()],
+            });
+        let request = GenerateWorkItemPlanRequest {
+            mission: "Create nested features".to_string(),
+            refinement_request: None,
+            current_plan: None,
+        };
+        let response = r#"{
+            "mission": "Create nested features",
+            "items": [{
+                "temporaryId": "feature-1",
+                "parentTemporaryId": null,
+                "type": "Feature",
+                "state": "Proposed",
+                "title": "Parent feature",
+                "description": "",
+                "acceptanceCriteria": "",
+                "iterationPath": "Project\\Current",
+                "assignedTo": "user@example.com",
+                "dependencyTemporaryIds": []
+            }, {
+                "temporaryId": "feature-2",
+                "parentTemporaryId": "feature-1",
+                "type": "Feature",
+                "state": "Proposed",
+                "title": "Child feature",
+                "description": "",
+                "acceptanceCriteria": "",
+                "iterationPath": "Project\\Current",
+                "assignedTo": "user@example.com",
+                "dependencyTemporaryIds": []
+            }]
+        }"#;
+
+        let plan = parse_generated_plan(response, &planner_context, &request).unwrap();
+        assert_eq!(
+            plan.items[1].parent_temporary_id.as_deref(),
+            Some("feature-1")
+        );
+        assert_eq!(validate_plan(&plan, &planner_context), Ok(()));
+    }
+
+    #[test]
+    fn rejects_a_manual_dependency_between_parent_and_child() {
+        let mut planner_context = context();
+        planner_context
+            .work_item_types
+            .push(AiWorkItemTypeMetadata {
+                name: "User Story".to_string(),
+                initial_state: "Proposed".to_string(),
+                states: vec!["Proposed".to_string()],
+            });
+        let mut plan = valid_plan();
+        plan.items[0].work_item_type = "User Story".to_string();
+        plan.items[0].title = "Parent story".to_string();
+        plan.items.push(GeneratedWorkItem {
+            temporary_id: "task-2".to_string(),
+            parent_temporary_id: Some("task-1".to_string()),
+            work_item_type: "Task".to_string(),
+            state: "Proposed".to_string(),
+            title: "Child task".to_string(),
+            description: String::new(),
+            acceptance_criteria: String::new(),
+            iteration_path: "Project\\Current".to_string(),
+            assigned_to: "user@example.com".to_string(),
+            dependency_temporary_ids: vec!["task-1".to_string()],
+        });
+
+        assert!(validate_plan(&plan, &planner_context)
+            .unwrap_err()
+            .contains("both parent-child and dependency-linked"));
     }
 
     #[test]

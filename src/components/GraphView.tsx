@@ -328,7 +328,7 @@ function GraphViewInner({
               onToggleExpand: handleToggleExpand,
               previewMode: previewActions !== undefined,
               onPreviewStateChange: previewActions?.onStateChange,
-              onOpenOverview: previewActions ? undefined : onOpenWorkItem,
+              onOpenOverview: onOpenWorkItem,
             },
           };
         }
