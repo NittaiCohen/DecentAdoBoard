@@ -340,7 +340,7 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
         aria-modal="true"
         aria-labelledby="ai-planner-title"
         onKeyDown={handleDialogKeyDown}
-        className="flex max-h-[92vh] w-full max-w-7xl flex-col overflow-hidden rounded-xl bg-gray-50 shadow-2xl dark:bg-gray-900"
+        className="flex h-[95vh] w-[95vw] flex-col overflow-hidden rounded-xl bg-gray-50 shadow-2xl dark:bg-gray-900"
       >
         <header className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-700 dark:bg-gray-800">
           <div>
@@ -365,7 +365,7 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
           </button>
         </header>
 
-        <div className="overflow-y-auto p-6">
+        <div className="flex flex-1 flex-col overflow-y-auto p-6">
           {step === "describe" && (
             <div className="mx-auto max-w-2xl">
               <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -450,7 +450,7 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
           {step === "submitting" && <LoadingIndicator message="Submitting the approved plan..." />}
 
           {step === "preview" && plan && preview && (
-            <div>
+            <>
               <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
@@ -469,7 +469,7 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
 
               <div
                 aria-label="Generated work-item graph"
-                className="h-[500px] overflow-hidden rounded-lg border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-950"
+                className="h-[clamp(360px,calc(95vh-420px),520px)] flex-grow overflow-hidden rounded-lg border border-gray-300 bg-white dark:border-gray-700 dark:bg-gray-950"
               >
                 <GraphView
                   boardData={preview.boardData}
@@ -528,7 +528,7 @@ export default function AiWorkItemModal({ isOpen, onClose }: AiWorkItemModalProp
                   </button>
                 </div>
               </div>
-            </div>
+            </>
           )}
 
           {step === "confirm" && plan && (

@@ -608,7 +608,7 @@ function GraphViewInner({
   }, [handleWheel]);
 
   return (
-    <div ref={containerRef} className="relative w-full h-full">
+    <div ref={containerRef} className="relative flex h-full min-h-0 w-full flex-1">
       <ReactFlow
         nodes={nodes}
         edges={edges}

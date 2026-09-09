@@ -138,7 +138,7 @@ function BoardView({
   return (
     <UndoRedoProvider value={contextValue}>
       <div className="flex h-screen w-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
-        <div className="flex-1 relative">
+        <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
           <GraphView
             boardData={boardData}
             operationContextRef={operationContextRef}
@@ -207,6 +207,7 @@ function App() {
   const boardData = fetchedBoardData;
   const isLoading = isBoardDataLoading;
   const error = boardDataError;
+
   function toggleCreateWorkItem(): void {
     if (createWorkItemOpen) {
       setCreateWorkItemOpen(false);
