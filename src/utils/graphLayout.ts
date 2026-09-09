@@ -8,6 +8,7 @@ import { BOARD_NODE_TYPES, isBoardNodeType, type BoardNodeType } from "../types/
 import { computeActionableSet, DONE_STATES } from "./actionable";
 import { mapBy } from "./collections";
 import { assignLaneOffsets } from "./edgeRouting";
+import { getCurrentIterationPath } from "./iterations";
 
 export const NODE_HEIGHT = 80;
 export const NODE_GAP_X = 60;
@@ -567,14 +568,7 @@ function buildIterationInfo(
     return a.localeCompare(b);
   });
 
-  const now = new Date().toISOString();
-  let currentIterPath: string | null = null;
-  for (const [path, iter] of iterationByPath) {
-    if (iter.start_date && iter.finish_date && iter.start_date <= now && now <= iter.finish_date) {
-      currentIterPath = path;
-      break;
-    }
-  }
+  const currentIterPath = getCurrentIterationPath(iterations);
 
   const iterationGroups = groupItemsBySprint(workItems, multiSprint, workItemMap, iterationByPath);
 
