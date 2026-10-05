@@ -9,12 +9,14 @@ import StateDropdown from "./StateDropdown";
 import WorkItemTitleButton from "./WorkItemTitleButton";
 import WorkItemTypeIcon from "./WorkItemTypeIcon";
 import ReminderButton from "./ReminderButton";
+import { Plus } from "lucide-react";
 
 interface ActionableSidebarProps {
   isOpen: boolean;
   onToggle: () => void;
   boardData?: BoardData;
   onOpenOverview: (workItemId: number) => void;
+  onCreateChild: (parentWorkItem: WorkItem) => void;
 }
 
 interface ActionableNode {
@@ -149,11 +151,13 @@ function ActionableNodeCard({
   node,
   depth,
   onOpenOverview,
+  onCreateChild,
   triggeredReminderIds,
 }: {
   node: ActionableNode;
   depth: number;
   onOpenOverview: (workItemId: number) => void;
+  onCreateChild: (parentWorkItem: WorkItem) => void;
   triggeredReminderIds: Set<number>;
 }) {
   const colorClass = TYPE_COLORS[node.workItem.type] ?? DEFAULT_TYPE_COLOR;
@@ -189,11 +193,25 @@ function ActionableNodeCard({
       </WorkItemTitleButton>
       <div className="flex items-center justify-between gap-2">
         <AssignedToDisplay value={node.workItem.assigned_to} />
-        <ReminderButton
-          workItemId={node.workItem.id}
-          workItemTitle={node.workItem.title}
-          isTriggered={isTriggered}
-        />
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              onCreateChild(node.workItem);
+            }}
+            className="rounded p-1 text-gray-500 hover:bg-black/10 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-100"
+            title="Create child work item"
+            aria-label={`Create child work item for ${node.workItem.title}`}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <ReminderButton
+            workItemId={node.workItem.id}
+            workItemTitle={node.workItem.title}
+            isTriggered={isTriggered}
+          />
+        </div>
       </div>
       {node.children.length > 0 && (
         <div className="space-y-1.5 mt-2 ml-1">
@@ -203,6 +221,7 @@ function ActionableNodeCard({
               node={child}
               depth={depth + 1}
               onOpenOverview={onOpenOverview}
+              onCreateChild={onCreateChild}
               triggeredReminderIds={triggeredReminderIds}
             />
           ))}
@@ -217,6 +236,7 @@ export default function ActionableSidebar({
   onToggle,
   boardData,
   onOpenOverview,
+  onCreateChild,
 }: ActionableSidebarProps) {
   const { data: reminderData } = useQuery({
     queryKey: ["reminders"],
@@ -267,6 +287,7 @@ export default function ActionableSidebar({
                   node={node}
                   depth={0}
                   onOpenOverview={onOpenOverview}
+                  onCreateChild={onCreateChild}
                   triggeredReminderIds={triggeredReminderIds}
                 />
               ))}

@@ -53,6 +53,7 @@ interface GraphViewProps {
   readOnly?: boolean;
   previewActions?: GraphPreviewActions;
   onOpenWorkItem?: (workItemId: number) => void;
+  onCreateChild?: (parentWorkItem: WorkItem) => void;
 }
 
 export interface GraphPreviewActions {
@@ -71,6 +72,7 @@ interface GraphViewInnerProps {
   readOnly: boolean;
   previewActions?: GraphPreviewActions;
   onOpenWorkItem?: (workItemId: number) => void;
+  onCreateChild?: (parentWorkItem: WorkItem) => void;
 }
 
 const NO_OP = () => {};
@@ -259,6 +261,7 @@ export default function GraphView({
   readOnly = false,
   previewActions,
   onOpenWorkItem,
+  onCreateChild,
 }: GraphViewProps) {
   const internalOperationContextRef = useRef<OperationContext>(null);
 
@@ -273,6 +276,7 @@ export default function GraphView({
         readOnly={readOnly}
         previewActions={previewActions}
         onOpenWorkItem={onOpenWorkItem}
+        onCreateChild={onCreateChild}
       />
     </ReactFlowProvider>
   );
@@ -296,6 +300,7 @@ function GraphViewInner({
   readOnly,
   previewActions,
   onOpenWorkItem,
+  onCreateChild,
 }: GraphViewInnerProps) {
   const [expandedParents, handleToggleExpand] = useExpandedParents(boardData);
   const { setViewport, getViewport, fitView } = useReactFlow();
@@ -328,6 +333,7 @@ function GraphViewInner({
               previewMode: previewActions !== undefined,
               onPreviewStateChange: previewActions?.onStateChange,
               onOpenOverview: onOpenWorkItem,
+              onCreateChild,
             },
           };
         }
@@ -335,7 +341,14 @@ function GraphViewInner({
       }),
       edges: result.edges,
     };
-  }, [boardData, expandedParents, handleToggleExpand, onOpenWorkItem, previewActions]);
+  }, [
+    boardData,
+    expandedParents,
+    handleToggleExpand,
+    onCreateChild,
+    onOpenWorkItem,
+    previewActions,
+  ]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState<Node>(layoutNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(layoutEdges);

@@ -6,9 +6,12 @@ import WorkItemTitleButton from "./WorkItemTitleButton";
 import WorkItemTypeIcon from "./WorkItemTypeIcon";
 import { DEFAULT_PARENT_GROUP_TYPE_COLOR, PARENT_GROUP_TYPE_COLORS } from "../utils/workItemColors";
 import type { BOARD_NODE_TYPES } from "../types/graph";
+import { Plus } from "lucide-react";
+import type { WorkItem } from "../types";
 
 export interface ParentGroupData extends Record<string, unknown> {
   label: string;
+  workItem: WorkItem;
   workItemId: number;
   workItemType: string;
   state: string;
@@ -20,6 +23,7 @@ export interface ParentGroupData extends Record<string, unknown> {
   previewMode?: boolean;
   onPreviewStateChange?: (workItemId: number, newState: string) => void;
   onOpenOverview?: (id: number) => void;
+  onCreateChild?: (parentWorkItem: WorkItem) => void;
 }
 
 export type ParentGroupNode = Node<ParentGroupData, typeof BOARD_NODE_TYPES.parentGroup>;
@@ -94,6 +98,20 @@ function ParentGroupComponent({ data, positionAbsoluteX }: NodeProps<ParentGroup
         >
           {data.label}
         </WorkItemTitleButton>
+        {!data.previewMode && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              data.onCreateChild?.(data.workItem);
+            }}
+            className="nodrag nopan rounded p-1 text-gray-500 hover:bg-black/10 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-100"
+            title="Create child work item"
+            aria-label={`Create child work item for ${data.label}`}
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();

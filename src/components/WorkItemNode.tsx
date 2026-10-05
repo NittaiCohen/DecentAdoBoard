@@ -10,6 +10,7 @@ import WorkItemTypeIcon from "./WorkItemTypeIcon";
 import ReminderButton from "./ReminderButton";
 import type { BOARD_NODE_TYPES } from "../types/graph";
 import { listReminders } from "../api/tauri";
+import { Plus } from "lucide-react";
 
 export interface WorkItemNodeData extends Record<string, unknown> {
   workItem: WorkItem;
@@ -23,6 +24,7 @@ export interface WorkItemNodeData extends Record<string, unknown> {
   previewMode?: boolean;
   onPreviewStateChange?: (workItemId: number, newState: string) => void;
   onOpenOverview?: (id: number) => void;
+  onCreateChild?: (parentWorkItem: WorkItem) => void;
 }
 
 export type WorkItemNode = Node<WorkItemNodeData, typeof BOARD_NODE_TYPES.workItem>;
@@ -72,7 +74,7 @@ function WorkItemHeader({ data }: { data: WorkItemNodeData }) {
 }
 
 function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
-  const { workItem, isActionable, onOpenOverview } = data;
+  const { workItem, isActionable, onOpenOverview, onCreateChild, previewMode } = data;
   const { data: reminderData } = useQuery<Reminder[]>({
     queryKey: ["reminders"],
     queryFn: () => listReminders(),
@@ -118,11 +120,27 @@ function WorkItemNodeComponent({ data }: NodeProps<WorkItemNode>) {
 
       <div className="flex shrink-0 items-center justify-between gap-2">
         <AssignedToDisplay value={workItem.assigned_to} />
-        <ReminderButton
-          workItemId={workItem.id}
-          workItemTitle={workItem.title}
-          isTriggered={hasTriggeredReminder}
-        />
+        <div className="flex items-center gap-1">
+          {!previewMode && (
+            <button
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onCreateChild?.(workItem);
+              }}
+              className="nodrag nopan rounded p-1 text-gray-500 hover:bg-black/10 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-white/10 dark:hover:text-gray-100"
+              title="Create child work item"
+              aria-label={`Create child work item for ${workItem.title}`}
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <ReminderButton
+            workItemId={workItem.id}
+            workItemTitle={workItem.title}
+            isTriggered={hasTriggeredReminder}
+          />
+        </div>
       </div>
     </div>
   );

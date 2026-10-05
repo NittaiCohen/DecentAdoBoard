@@ -11,7 +11,7 @@ import CreateWorkItemDialog from "./components/CreateWorkItemDialog";
 import { prefetchBoardWorkItemTypes, useBoardData } from "./hooks/useAdoData";
 import { setConfig, checkAuth, logout } from "./api/tauri";
 import { getSavedConfig, clearConfig } from "./utils/storage";
-import type { BoardData } from "./types";
+import type { BoardData, WorkItem } from "./types";
 import { getCurrentIterationPath } from "./utils/iterations";
 import { useUndoRedo } from "./hooks/useUndoRedo";
 import { UndoRedoProvider } from "./contexts/UndoRedoContext";
@@ -128,13 +128,13 @@ function BoardView({
   isPreloadingCreateWorkItemData: boolean;
 }) {
   const [isAiPlannerOpen, setIsAiPlannerOpen] = useState(false);
+  const [selectedParentWorkItem, setSelectedParentWorkItem] = useState<WorkItem | null>(null);
   const operationContextRef = useRef<OperationContext>(null);
   const { push: pushUndo, undo, redo } = useUndoRedo(operationContextRef);
   const contextValue = useMemo(
     () => ({ push: pushUndo, operationContextRef }),
     [pushUndo, operationContextRef],
   );
-
   return (
     <UndoRedoProvider value={contextValue}>
       <div className="flex h-screen w-screen overflow-hidden bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
@@ -146,6 +146,10 @@ function BoardView({
             undo={undo}
             redo={redo}
             onOpenWorkItem={onOpenWorkItem}
+            onCreateChild={(parentWorkItem) => {
+              setSelectedParentWorkItem(parentWorkItem);
+              onCreateWorkItem();
+            }}
           />
           <HamburgerMenu
             onChangeProject={onChangeProject}
@@ -173,6 +177,10 @@ function BoardView({
           onToggle={onToggleSidebar}
           boardData={boardData}
           onOpenOverview={onOpenWorkItem}
+          onCreateChild={(parentWorkItem) => {
+            setSelectedParentWorkItem(parentWorkItem);
+            onCreateWorkItem();
+          }}
         />
       </div>
       {openWorkItemId !== null && (
@@ -180,9 +188,16 @@ function BoardView({
       )}
       {createWorkItemOpen && (
         <CreateWorkItemDialog
-          onClose={onCreateWorkItem}
+          onClose={() => {
+            setSelectedParentWorkItem(null);
+            onCreateWorkItem();
+          }}
           isPreloadingFields={isPreloadingCreateWorkItemData}
-          defaultIterationPath={boardData ? getCurrentIterationPath(boardData.iterations) : null}
+          defaultIterationPath={
+            selectedParentWorkItem?.iteration_path ??
+            (boardData ? getCurrentIterationPath(boardData.iterations) : null)
+          }
+          parentWorkItem={selectedParentWorkItem ?? undefined}
         />
       )}
     </UndoRedoProvider>
