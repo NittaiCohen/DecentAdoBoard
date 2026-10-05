@@ -14,18 +14,11 @@ interface AiPreviewWorkItemOverviewProps {
 const inputClass =
   "w-full rounded border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-900";
 
-function parseWorkItemType(value: string): GeneratedWorkItem["type"] | null {
-  switch (value) {
-    case "Bug":
-    case "Task":
-    case "User Story":
-    case "Feature":
-    case "Epic":
-    case "Product Backlog Item":
-      return value;
-    default:
-      return null;
-  }
+function parseWorkItemType(
+  value: string,
+  availableWorkItemTypes: AiPlannerContext["workItemTypes"],
+): GeneratedWorkItem["type"] | null {
+  return availableWorkItemTypes.some((type) => type.name === value) ? value : null;
 }
 
 function collectDescendantIds(plan: GeneratedWorkItemPlan, rootTemporaryId: string): Set<string> {
@@ -100,7 +93,7 @@ export default function AiPreviewWorkItemOverview({
   }
 
   function changeType(workItemType: string) {
-    const parsedWorkItemType = parseWorkItemType(workItemType);
+    const parsedWorkItemType = parseWorkItemType(workItemType, context.workItemTypes);
     if (!parsedWorkItemType) {
       return;
     }
