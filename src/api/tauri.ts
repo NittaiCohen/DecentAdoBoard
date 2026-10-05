@@ -119,6 +119,7 @@ export async function createWorkItem(
   description?: string,
   iterationPath?: string,
   additionalFields?: WorkItemFieldUpdate[],
+  parentWorkItemId?: number,
 ): Promise<number> {
   return await invoke<number>("create_work_item", {
     workItemType,
@@ -126,6 +127,7 @@ export async function createWorkItem(
     description,
     iterationPath,
     additionalFields,
+    parentWorkItemId,
   });
 }
 

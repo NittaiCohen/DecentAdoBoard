@@ -1,9 +1,14 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import {
   clearConfig,
+  getChildWorkItemTypePreference,
   getRecentWorkItemTypes,
   getSavedConfig,
+  isWorkItemType,
+  removeChildWorkItemTypePreference,
+  removeRecentWorkItemType,
   saveConfig,
+  saveChildWorkItemTypePreference,
   saveRecentWorkItemType,
 } from "./storage";
 
@@ -65,6 +70,11 @@ describe("storage utilities", () => {
     });
 
     describe("recent work item types", () => {
+      it("accepts custom ADO work item types", () => {
+        expect(isWorkItemType("Custom Review Item")).toBe(true);
+        expect(isWorkItemType("")).toBe(false);
+      });
+
       it("stores the newest type first and removes duplicates", () => {
         saveRecentWorkItemType("Bug");
         saveRecentWorkItemType("Task");
@@ -85,6 +95,56 @@ describe("storage utilities", () => {
           "Feature",
           "Task",
         ]);
+      });
+
+      it("removes a type from the recent list", () => {
+        saveRecentWorkItemType("Bug");
+        saveRecentWorkItemType("Task");
+        removeRecentWorkItemType("Bug");
+
+        expect(getRecentWorkItemTypes()).toEqual(["Task"]);
+      });
+    });
+
+    describe("child work item type preferences", () => {
+      it("stores a preference by parent work item type", () => {
+        saveChildWorkItemTypePreference("Bug", "Task");
+
+        expect(getChildWorkItemTypePreference("Bug")).toEqual(["Task"]);
+        expect(getChildWorkItemTypePreference("Product Backlog Item")).toEqual([]);
+      });
+
+      it("keeps the five most recent child types for a parent work item type", () => {
+        saveChildWorkItemTypePreference("Bug", "Task");
+        saveChildWorkItemTypePreference("Bug", "User Story");
+        saveChildWorkItemTypePreference("Bug", "Feature");
+        saveChildWorkItemTypePreference("Bug", "Epic");
+        saveChildWorkItemTypePreference("Bug", "Product Backlog Item");
+        saveChildWorkItemTypePreference("Bug", "Task");
+
+        expect(getChildWorkItemTypePreference("Bug")).toEqual([
+          "Task",
+          "Product Backlog Item",
+          "Epic",
+          "Feature",
+          "User Story",
+        ]);
+      });
+
+      it("keeps preferences for different parent types separate", () => {
+        saveChildWorkItemTypePreference("Bug", "Task");
+        saveChildWorkItemTypePreference("Product Backlog Item", "Bug");
+
+        expect(getChildWorkItemTypePreference("Bug")).toEqual(["Task"]);
+        expect(getChildWorkItemTypePreference("Product Backlog Item")).toEqual(["Bug"]);
+      });
+
+      it("removes a child type without removing other preferences", () => {
+        saveChildWorkItemTypePreference("Bug", "Task");
+        saveChildWorkItemTypePreference("Bug", "User Story");
+        removeChildWorkItemTypePreference("Bug", "Task");
+
+        expect(getChildWorkItemTypePreference("Bug")).toEqual(["User Story"]);
       });
     });
   });

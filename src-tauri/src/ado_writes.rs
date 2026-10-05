@@ -155,6 +155,7 @@ pub async fn create_work_item(
     description: Option<String>,
     iteration_path: Option<String>,
     additional_fields: Option<Vec<WorkItemFieldUpdate>>,
+    parent_work_item_id: Option<i64>,
 ) -> Result<i64, String> {
     if title.trim().is_empty() {
         return Err("A work item title is required".to_string());
@@ -201,6 +202,21 @@ pub async fn create_work_item(
                 value: field.value,
             });
         }
+    }
+
+    if let Some(parent_id) = parent_work_item_id {
+        let config = state.get_config()?;
+        patch_body.push(JsonPatchOperation {
+            op: "add".to_string(),
+            path: "/relations/-".to_string(),
+            value: serde_json::json!({
+                "rel": "System.LinkTypes.Hierarchy-Reverse",
+                "url": format!(
+                    "https://dev.azure.com/{}/_apis/wit/workItems/{parent_id}",
+                    config.organization
+                ),
+            }),
+        });
     }
 
     create_work_item_from_patch(&state, &work_item_type, &patch_body, "Create work item").await

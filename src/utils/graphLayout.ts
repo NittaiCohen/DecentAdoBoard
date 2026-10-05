@@ -407,6 +407,7 @@ function renderExpandedGroup(
     position: { x, y },
     data: {
       label: workItem.title,
+      workItem,
       workItemId: workItem.id,
       workItemType: workItem.type,
       state: workItem.state,

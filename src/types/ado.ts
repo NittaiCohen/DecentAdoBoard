@@ -1,10 +1,12 @@
-export type WorkItemType =
+export type KnownWorkItemType =
   | "Bug"
   | "Task"
   | "User Story"
   | "Feature"
   | "Epic"
   | "Product Backlog Item";
+
+export type WorkItemType = KnownWorkItemType | (string & {});
 
 export interface WorkItem {
   id: number;

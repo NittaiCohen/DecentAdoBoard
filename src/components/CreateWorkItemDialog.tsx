@@ -2,7 +2,16 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { createWorkItem } from "../api/tauri";
 import { useBoardWorkItemTypes, useWorkItemTypeFields } from "../hooks/useAdoData";
-import { getRecentWorkItemTypes, getSavedConfig, saveRecentWorkItemType } from "../utils/storage";
+import {
+  getChildWorkItemTypePreference,
+  getRecentWorkItemTypes,
+  getSavedConfig,
+  isWorkItemType,
+  removeChildWorkItemTypePreference,
+  removeRecentWorkItemType,
+  saveChildWorkItemTypePreference,
+  saveRecentWorkItemType,
+} from "../utils/storage";
 import WorkItemPathSelector from "./WorkItemPathSelector";
 import RichTextFieldEditor from "./RichTextFieldEditor";
 import { SpecialFieldEditor } from "./WorkItemFieldEditor";
@@ -21,18 +30,20 @@ import {
   getDefaultOverviewFieldSelection,
   getOverviewFieldsForWorkItemType,
 } from "../config/overviewFields";
-import type { JsonValue, WorkItemFieldDefinition, WorkItemFieldUpdate } from "../types";
+import type { JsonValue, WorkItem, WorkItemFieldDefinition, WorkItemFieldUpdate } from "../types";
 
 interface CreateWorkItemDialogProps {
   onClose: () => void;
   isPreloadingFields?: boolean;
   defaultIterationPath?: string | null;
+  parentWorkItem?: WorkItem;
 }
 
 export default function CreateWorkItemDialog({
   onClose,
   isPreloadingFields = false,
   defaultIterationPath = null,
+  parentWorkItem,
 }: CreateWorkItemDialogProps) {
   const queryClient = useQueryClient();
   const { data: workItemTypes = [], error, isLoading } = useBoardWorkItemTypes(true);
@@ -41,16 +52,47 @@ export default function CreateWorkItemDialog({
   const [description, setDescription] = useState("");
   const [iterationPath, setIterationPath] = useState(defaultIterationPath ?? "");
   const [fieldValues, setFieldValues] = useState<Record<string, JsonValue>>({});
-  const [recentWorkItemTypes] = useState(getRecentWorkItemTypes);
+  const [recentWorkItemTypes, setRecentWorkItemTypes] = useState(() => {
+    const recentTypes = getRecentWorkItemTypes();
+    if (!parentWorkItem) {
+      return recentTypes;
+    }
+
+    const childWorkItemTypes = getChildWorkItemTypePreference(parentWorkItem.type);
+    const childWorkItemTypeSet = new Set<string>(childWorkItemTypes);
+    return [
+      ...childWorkItemTypes,
+      ...recentTypes.filter((type) => !childWorkItemTypeSet.has(type)),
+    ];
+  });
+
+  function removeRecentType(workItemType: string) {
+    setRecentWorkItemTypes((current) => current.filter((type) => type !== workItemType));
+    removeRecentWorkItemType(workItemType);
+    if (parentWorkItem && isWorkItemType(workItemType)) {
+      removeChildWorkItemTypePreference(parentWorkItem.type, workItemType);
+    }
+  }
+
   const createMutation = useMutation({
     mutationFn: () => {
       const additionalFields: WorkItemFieldUpdate[] = Object.entries(fieldValues).map(
         ([referenceName, value]) => ({ referenceName, value }),
       );
-      return createWorkItem(selectedType, title, description, iterationPath, additionalFields);
+      return createWorkItem(
+        selectedType,
+        title,
+        description,
+        iterationPath,
+        additionalFields,
+        parentWorkItem?.id,
+      );
     },
     onSuccess: async () => {
       saveRecentWorkItemType(selectedType);
+      if (parentWorkItem && isWorkItemType(selectedType)) {
+        saveChildWorkItemTypePreference(parentWorkItem.type, selectedType);
+      }
       await queryClient.invalidateQueries({ queryKey: ["boardData"] });
       onClose();
     },
@@ -67,7 +109,9 @@ export default function CreateWorkItemDialog({
     return [...recentTypes, ...remainingTypes];
   }, [recentWorkItemTypes, workItemTypes]);
 
-  const selectedType = workItemType || orderedWorkItemTypes[0]?.name || "";
+  const selectedType = workItemTypes.some((type) => type.name === workItemType)
+    ? workItemType
+    : orderedWorkItemTypes[0]?.name || "";
   const {
     data: fieldDefinitions = [],
     error: fieldError,
@@ -208,6 +252,8 @@ export default function CreateWorkItemDialog({
               options={orderedWorkItemTypes}
               disabled={isLoading}
               onChange={setWorkItemType}
+              recentTypeNames={recentWorkItemTypes}
+              onRemoveRecentType={removeRecentType}
             />
             <input
               value={title}
