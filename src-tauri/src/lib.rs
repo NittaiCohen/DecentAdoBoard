@@ -29,11 +29,6 @@ pub fn run() {
             let reminder_manager = app.state::<state::AppState>().reminder_manager.clone();
             reminders::start_scheduler(app.handle().clone(), reminder_manager);
 
-            #[cfg(debug_assertions)]
-            if let Some(window) = app.get_webview_window("main") {
-                window.open_devtools();
-            }
-
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
