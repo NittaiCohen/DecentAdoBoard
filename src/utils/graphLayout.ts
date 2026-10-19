@@ -1,6 +1,6 @@
 import { MarkerType, type Edge, type Node } from "@xyflow/react";
 import { isNil } from "lodash-es";
-import type { BoardData, Iteration, Point, WorkItem } from "../types";
+import type { BoardData, Iteration, Point, RequiredSome, WorkItem } from "../types";
 import type { WorkItemNodeData } from "../components/WorkItemNode";
 import type { SprintDividerData } from "../components/SprintDivider";
 import type { ParentGroupData } from "../components/ParentGroup";
@@ -1482,8 +1482,8 @@ export function buildNodePositions(nodes: readonly Node[]): {
   const getNodeDimension = (node: Node, dimension: NodeDimension, defaultValue: number): number =>
     Number(node.style?.[dimension] ?? node.measured?.[dimension] ?? defaultValue);
 
-  const nodesWithParents = nodes.filter((node): node is Node & { parentId: string } =>
-    Boolean(node.parentId),
+  const nodesWithParents = nodes.filter(
+    (node): node is RequiredSome<Node, "parentId"> => !isNil(node.parentId),
   );
   const parentMap = new Map(nodesWithParents.map((node) => [node.id, node.parentId] as const));
   const positions = new Map(
