@@ -1504,15 +1504,13 @@ export function buildNodePositions(nodes: readonly Node[]): {
   positions: Map<string, NodePosition>;
   parentMap: Map<string, string>;
 } {
-  const nodeById = new Map(nodes.map((node) => [node.id, node] as const));
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
 
   const parentMap = new Map<string, string>(
     nodes
       .filter((node): node is RequiredSome<Node, "parentId"> => !isNil(node.parentId))
-      .map((node: RequiredSome<Node, "parentId">): [string, string] => [node.id, node.parentId]),
+      .map((node: RequiredSome<Node, "parentId">) => [node.id, node.parentId]),
   );
-  const positions = new Map(
-    nodes.map((node) => [node.id, getNodePosition(node, nodeById)] as const),
-  );
+  const positions = new Map(nodes.map((node) => [node.id, getNodePosition(node, nodeById)]));
   return { positions, parentMap };
 }
