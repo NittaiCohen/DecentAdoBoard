@@ -1,4 +1,5 @@
 import type { WorkItem } from "../types";
+import { getAncestors } from "./collections";
 
 export const DONE_STATES = new Set(["Done", "Closed", "Resolved", "Removed"]);
 
@@ -54,5 +55,29 @@ export function computeActionableSet(workItems: WorkItem[]): Set<number> {
 
   return new Set(
     workItems.filter((workItem) => isActionable(workItem.id)).map((workItem) => workItem.id),
+  );
+}
+
+/**
+ * Adds each triggered work item's ancestors so parent cards also show its notification.
+ */
+export function propagateTriggeredReminderIds(
+  workItems: WorkItem[],
+  triggeredReminderIds: Set<number>,
+): Set<number> {
+  const workItemMap = new Map(workItems.map((workItem) => [workItem.id, workItem]));
+
+  const getParent = (currentWorkItem: WorkItem) =>
+    currentWorkItem.parent_id === null ? undefined : workItemMap.get(currentWorkItem.parent_id);
+
+  return new Set(
+    [...triggeredReminderIds].flatMap((triggeredReminderId) => {
+      const workItem = workItemMap.get(triggeredReminderId);
+
+      return [
+        triggeredReminderId,
+        ...(workItem ? getAncestors(workItem, getParent).map((ancestor) => ancestor.id) : []),
+      ];
+    }),
   );
 }
