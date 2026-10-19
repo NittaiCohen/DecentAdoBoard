@@ -1,4 +1,4 @@
-import { computeActionableSet } from "./actionable";
+import { computeActionableSet, propagateTriggeredReminderIds } from "./actionable";
 import { generateWorkItem } from "./test-helpers";
 
 describe("computeActionableSet", () => {
@@ -27,6 +27,22 @@ describe("computeActionableSet", () => {
        *  Terminal state → excluded from actionable set
        */
       expect(computeActionableSet([generateWorkItem({ id: 1, state })])).toEqual(new Set());
+    });
+  });
+
+  describe("propagateTriggeredReminderIds", () => {
+    it("adds all ancestors of a triggered child", () => {
+      const grandparent = generateWorkItem({ id: 1, children: [2] });
+      const parent = generateWorkItem({ id: 2, parent_id: 1, children: [3] });
+      const child = generateWorkItem({ id: 3, parent_id: 2 });
+
+      expect(propagateTriggeredReminderIds([grandparent, parent, child], new Set([3]))).toEqual(
+        new Set([1, 2, 3]),
+      );
+    });
+
+    it("preserves a triggered ID when its work item is not on the board", () => {
+      expect(propagateTriggeredReminderIds([], new Set([42]))).toEqual(new Set([42]));
     });
   });
 
