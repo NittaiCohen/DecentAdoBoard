@@ -1,10 +1,10 @@
-import { MarkerType, type Edge, type Node } from "@xyflow/react";
+import { type Edge, MarkerType, type Node } from "@xyflow/react";
 import { isNil } from "lodash-es";
 import type { BoardData, Iteration, Point, RequiredSome, WorkItem } from "../types";
 import type { WorkItemNodeData } from "../components/WorkItemNode";
 import type { SprintDividerData } from "../components/SprintDivider";
 import type { ParentGroupData } from "../components/ParentGroup";
-import { BOARD_NODE_TYPES, isBoardNodeType, type BoardNodeType } from "../types/graph";
+import { BOARD_NODE_TYPES, type BoardNodeType, isBoardNodeType } from "../types/graph";
 import { computeActionableSet, DONE_STATES } from "./actionable";
 import { getAncestors, mapBy } from "./collections";
 import { assignLaneOffsets } from "./edgeRouting";
@@ -1482,10 +1482,11 @@ export function buildNodePositions(nodes: readonly Node[]): {
   const getNodeDimension = (node: Node, dimension: NodeDimension, defaultValue: number): number =>
     Number(node.style?.[dimension] ?? node.measured?.[dimension] ?? defaultValue);
 
-  const nodesWithParents = nodes.filter(
-    (node): node is RequiredSome<Node, "parentId"> => !isNil(node.parentId),
+  const parentMap = new Map<string, string>(
+    nodes
+      .filter((node): node is RequiredSome<Node, "parentId"> => !isNil(node.parentId))
+      .map((node: RequiredSome<Node, "parentId">): [string, string] => [node.id, node.parentId]),
   );
-  const parentMap = new Map(nodesWithParents.map((node) => [node.id, node.parentId] as const));
   const positions = new Map(
     nodes.map((node) => {
       const ancestors = getAncestors(node, (currentNode) =>
