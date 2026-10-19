@@ -2,6 +2,7 @@ import type { Edge } from "@xyflow/react";
 import type { Point } from "../types";
 import type { NodePosition } from "./graphLayout";
 import { BOARD_NODE_TYPES } from "../types/graph";
+import { getAncestors } from "./collections";
 
 // Inline constant to avoid circular dependency (pathfinding → graphLayout → edgeRouting → pathfinding).
 // Value must match graphLayout.ts: NODE_GAP_X = 60.
@@ -763,10 +764,10 @@ export function routeAllEdges(
     // Exclude source, target, and all of their ancestor groups from obstacles.
     const excludeIds = new Set([edge.source, edge.target]);
     const excludeAncestorGroups = (nodeId: string) => {
-      let ancestorId = parentMap.get(nodeId);
-      while (ancestorId !== undefined) {
+      for (const ancestorId of getAncestors(nodeId, (currentNodeId) =>
+        parentMap.get(currentNodeId),
+      )) {
         excludeIds.add(ancestorId);
-        ancestorId = parentMap.get(ancestorId);
       }
     };
     excludeAncestorGroups(edge.source);

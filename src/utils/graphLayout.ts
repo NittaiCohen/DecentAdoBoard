@@ -1,4 +1,4 @@
-import { MarkerType, type Edge } from "@xyflow/react";
+import { MarkerType, type Edge, type Node } from "@xyflow/react";
 import { isNil } from "lodash-es";
 import type { BoardData, Iteration, Point, WorkItem } from "../types";
 import type { WorkItemNodeData } from "../components/WorkItemNode";
@@ -6,7 +6,7 @@ import type { SprintDividerData } from "../components/SprintDivider";
 import type { ParentGroupData } from "../components/ParentGroup";
 import { BOARD_NODE_TYPES, isBoardNodeType, type BoardNodeType } from "../types/graph";
 import { computeActionableSet, DONE_STATES } from "./actionable";
-import { mapBy } from "./collections";
+import { getAncestors, mapBy } from "./collections";
 import { assignLaneOffsets } from "./edgeRouting";
 import { getCurrentIterationPath } from "./iterations";
 
@@ -1470,52 +1470,45 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
   return { nodes, edges: routedEdges };
 }
 
+type NodeDimension = "width" | "height";
+
 /** Builds a NodePosition map resolving child nodes to absolute coordinates. */
-export function buildNodePositions(
-  nodes: readonly {
-    id: string;
-    position: Point;
-    parentId?: string;
-    style?: { width?: string | number; height?: string | number };
-    measured?: { width?: number; height?: number };
-    type?: string;
-  }[],
-): { positions: Map<string, NodePosition>; parentMap: Map<string, string> } {
-  const nodeById = new Map<string, (typeof nodes)[number]>();
+export function buildNodePositions(nodes: readonly Node[]): {
+  positions: Map<string, NodePosition>;
+  parentMap: Map<string, string>;
+} {
+  const nodeById = new Map<string, Node>();
   nodes.forEach((node) => nodeById.set(node.id, node));
+
+  const getNodeDimension = (node: Node, dimension: NodeDimension, defaultValue: number): number =>
+    Number(node.style?.[dimension] ?? node.measured?.[dimension] ?? defaultValue);
 
   const positions = new Map<string, NodePosition>();
   const parentMap = new Map<string, string>();
   nodes.forEach((node) => {
-    let absX = node.position.x;
-    let absY = node.position.y;
     if (node.parentId) {
       parentMap.set(node.id, node.parentId);
     }
-    // Walk up the full ancestor chain to resolve absolute coordinates
-    let current = node.parentId ? nodeById.get(node.parentId) : undefined;
-    while (current) {
-      absX += current.position.x;
-      absY += current.position.y;
-      current = current.parentId ? nodeById.get(current.parentId) : undefined;
-    }
+    const ancestors = getAncestors(node, (currentNode) =>
+      currentNode.parentId ? nodeById.get(currentNode.parentId) : undefined,
+    );
+
+    const x = ancestors.reduce(
+      (positionX, ancestor) => positionX + ancestor.position.x,
+      node.position.x,
+    );
+
+    const y = ancestors.reduce(
+      (positionY, ancestor) => positionY + ancestor.position.y,
+      node.position.y,
+    );
 
     const defaultWidth = node.type === BOARD_NODE_TYPES.workItem ? CHILD_WIDTH : SUB_COLUMN_WIDTH;
-    let width = defaultWidth;
-    if (node.style?.width !== undefined) {
-      width = Number(node.style.width);
-    } else if (node.measured?.width !== undefined) {
-      width = node.measured.width;
-    }
-
-    let height = NODE_HEIGHT;
-    if (node.style?.height !== undefined) {
-      height = Number(node.style.height);
-    } else if (node.measured?.height !== undefined) {
-      height = node.measured.height;
-    }
+    const width = getNodeDimension(node, "width", defaultWidth);
+    const height = getNodeDimension(node, "height", NODE_HEIGHT);
     const nodeType = isBoardNodeType(node.type) ? node.type : undefined;
-    positions.set(node.id, { x: absX, y: absY, width, height, type: nodeType });
+
+    positions.set(node.id, { x, y, width, height, type: nodeType });
   });
   return { positions, parentMap };
 }
