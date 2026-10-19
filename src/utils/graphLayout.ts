@@ -1472,6 +1472,33 @@ export function buildGraphLayout(boardData: BoardData, expandedParents: Set<numb
 
 type NodeDimension = "width" | "height";
 
+function getNodeDimension(node: Node, dimension: NodeDimension, defaultValue: number): number {
+  return Number(node.style?.[dimension] ?? node.measured?.[dimension] ?? defaultValue);
+}
+
+function getNodePosition(node: Node, nodeById: Map<string, Node>): NodePosition {
+  const ancestors = getAncestors(node, (currentNode) =>
+    currentNode.parentId ? nodeById.get(currentNode.parentId) : undefined,
+  );
+
+  const x = ancestors.reduce(
+    (positionX, ancestor) => positionX + ancestor.position.x,
+    node.position.x,
+  );
+
+  const y = ancestors.reduce(
+    (positionY, ancestor) => positionY + ancestor.position.y,
+    node.position.y,
+  );
+
+  const defaultWidth = node.type === BOARD_NODE_TYPES.workItem ? CHILD_WIDTH : SUB_COLUMN_WIDTH;
+  const width = getNodeDimension(node, "width", defaultWidth);
+  const height = getNodeDimension(node, "height", NODE_HEIGHT);
+  const type = isBoardNodeType(node.type) ? node.type : undefined;
+
+  return { x, y, width, height, type };
+}
+
 /** Builds a NodePosition map resolving child nodes to absolute coordinates. */
 export function buildNodePositions(nodes: readonly Node[]): {
   positions: Map<string, NodePosition>;
@@ -1479,37 +1506,13 @@ export function buildNodePositions(nodes: readonly Node[]): {
 } {
   const nodeById = new Map(nodes.map((node) => [node.id, node] as const));
 
-  const getNodeDimension = (node: Node, dimension: NodeDimension, defaultValue: number): number =>
-    Number(node.style?.[dimension] ?? node.measured?.[dimension] ?? defaultValue);
-
   const parentMap = new Map<string, string>(
     nodes
       .filter((node): node is RequiredSome<Node, "parentId"> => !isNil(node.parentId))
       .map((node: RequiredSome<Node, "parentId">): [string, string] => [node.id, node.parentId]),
   );
   const positions = new Map(
-    nodes.map((node) => {
-      const ancestors = getAncestors(node, (currentNode) =>
-        currentNode.parentId ? nodeById.get(currentNode.parentId) : undefined,
-      );
-
-      const x = ancestors.reduce(
-        (positionX, ancestor) => positionX + ancestor.position.x,
-        node.position.x,
-      );
-
-      const y = ancestors.reduce(
-        (positionY, ancestor) => positionY + ancestor.position.y,
-        node.position.y,
-      );
-
-      const defaultWidth = node.type === BOARD_NODE_TYPES.workItem ? CHILD_WIDTH : SUB_COLUMN_WIDTH;
-      const width = getNodeDimension(node, "width", defaultWidth);
-      const height = getNodeDimension(node, "height", NODE_HEIGHT);
-      const nodeType = isBoardNodeType(node.type) ? node.type : undefined;
-
-      return [node.id, { x, y, width, height, type: nodeType }] as const;
-    }),
+    nodes.map((node) => [node.id, getNodePosition(node, nodeById)] as const),
   );
   return { positions, parentMap };
 }
