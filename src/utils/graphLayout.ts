@@ -1482,9 +1482,10 @@ export function buildNodePositions(nodes: readonly Node[]): {
   const getNodeDimension = (node: Node, dimension: NodeDimension, defaultValue: number): number =>
     Number(node.style?.[dimension] ?? node.measured?.[dimension] ?? defaultValue);
 
-  const parentMap = new Map(
-    nodes.flatMap((node) => (node.parentId ? [[node.id, node.parentId] as const] : [])),
+  const nodesWithParents = nodes.filter((node): node is Node & { parentId: string } =>
+    Boolean(node.parentId),
   );
+  const parentMap = new Map(nodesWithParents.map((node) => [node.id, node.parentId] as const));
   const positions = new Map(
     nodes.map((node) => {
       const ancestors = getAncestors(node, (currentNode) =>
