@@ -4,7 +4,7 @@ import type { BoardData, Reminder, WorkItem } from "../types";
 import { listReminders } from "../api/tauri";
 import { TYPE_COLORS, DEFAULT_TYPE_COLOR } from "../utils/workItemColors";
 import AssignedToDisplay from "./AssignedToDisplay";
-import { computeActionableSet } from "../utils/actionable";
+import { computeActionableSet, propagateTriggeredReminderIds } from "../utils/actionable";
 import StateDropdown from "./StateDropdown";
 import WorkItemTitleButton from "./WorkItemTitleButton";
 import WorkItemTypeIcon from "./WorkItemTypeIcon";
@@ -152,19 +152,21 @@ function ActionableNodeCard({
   depth,
   onOpenOverview,
   onCreateChild,
-  triggeredReminderIds,
+  directTriggeredReminderIds,
 }: {
   node: ActionableNode;
   depth: number;
   onOpenOverview: (workItemId: number) => void;
   onCreateChild: (parentWorkItem: WorkItem) => void;
-  triggeredReminderIds: Set<number>;
+  directTriggeredReminderIds: Set<number>;
 }) {
   const colorClass = TYPE_COLORS[node.workItem.type] ?? DEFAULT_TYPE_COLOR;
   const compact = depth > 0;
   const padding = compact ? "px-2 py-1.5" : "p-3";
-  const isTriggered = triggeredReminderIds.has(node.workItem.id);
-  const triggeredReminderRing = isTriggered ? "ring-2 ring-purple-500 dark:ring-purple-400" : "";
+  const hasDirectTriggeredReminder = directTriggeredReminderIds.has(node.workItem.id);
+  const triggeredReminderRing = hasDirectTriggeredReminder
+    ? "ring-2 ring-purple-500 dark:ring-purple-400"
+    : "";
 
   return (
     <div className={`rounded border-l-4 ${padding} ${colorClass} ${triggeredReminderRing}`}>
@@ -209,7 +211,7 @@ function ActionableNodeCard({
           <ReminderButton
             workItemId={node.workItem.id}
             workItemTitle={node.workItem.title}
-            isTriggered={isTriggered}
+            isTriggered={hasDirectTriggeredReminder}
           />
         </div>
       </div>
@@ -222,7 +224,7 @@ function ActionableNodeCard({
               depth={depth + 1}
               onOpenOverview={onOpenOverview}
               onCreateChild={onCreateChild}
-              triggeredReminderIds={triggeredReminderIds}
+              directTriggeredReminderIds={directTriggeredReminderIds}
             />
           ))}
         </div>
@@ -244,7 +246,7 @@ export default function ActionableSidebar({
     refetchInterval: 15_000,
   });
   const reminders = reminderData ?? EMPTY_REMINDERS;
-  const triggeredReminderIds = useMemo(
+  const directTriggeredReminderIds = useMemo(
     () =>
       new Set(
         reminders
@@ -252,6 +254,10 @@ export default function ActionableSidebar({
           .map((reminder) => reminder.work_item_id),
       ),
     [reminders],
+  );
+  const triggeredReminderIds = useMemo(
+    () => propagateTriggeredReminderIds(boardData?.work_items ?? [], directTriggeredReminderIds),
+    [boardData?.work_items, directTriggeredReminderIds],
   );
   const tree = buildActionableTree(boardData, triggeredReminderIds);
   const totalCount = countLeafItems(tree);
@@ -288,7 +294,7 @@ export default function ActionableSidebar({
                   depth={0}
                   onOpenOverview={onOpenOverview}
                   onCreateChild={onCreateChild}
-                  triggeredReminderIds={triggeredReminderIds}
+                  directTriggeredReminderIds={directTriggeredReminderIds}
                 />
               ))}
             </div>
