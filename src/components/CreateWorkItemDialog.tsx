@@ -19,6 +19,7 @@ import WorkItemTypeSelector from "./WorkItemTypeSelector";
 import { DEFAULT_TYPE_COLOR, TYPE_COLORS } from "../utils/workItemColors";
 import {
   AREA_PATH_FIELD_REFERENCE,
+  ASSIGNED_TO_FIELD_REFERENCE,
   DESCRIPTION_FIELD_REFERENCE,
   getHeaderFields,
   ITERATION_PATH_FIELD_REFERENCE,
@@ -30,7 +31,7 @@ import {
   getDefaultOverviewFieldSelection,
   getOverviewFieldsForWorkItemType,
 } from "../config/overviewFields";
-import type { JsonValue, WorkItem, WorkItemFieldDefinition, WorkItemFieldUpdate } from "../types";
+import type { JsonValue, WorkItem, WorkItemFieldDefinition } from "../types";
 
 interface CreateWorkItemDialogProps {
   onClose: () => void;
@@ -76,9 +77,11 @@ export default function CreateWorkItemDialog({
 
   const createMutation = useMutation({
     mutationFn: () => {
-      const additionalFields: WorkItemFieldUpdate[] = Object.entries(fieldValues).map(
-        ([referenceName, value]) => ({ referenceName, value }),
-      );
+      const additionalFields = Object.entries(fieldValues).map(([referenceName, value]) => ({
+        referenceName,
+        value,
+      }));
+
       return createWorkItem(
         selectedType,
         title,
@@ -152,6 +155,18 @@ export default function CreateWorkItemDialog({
     !createMutation.isPending;
 
   useEffect(() => {
+    if (
+      parentWorkItem &&
+      !isFieldMetadataLoading &&
+      !createFields.some((field) => field.referenceName === ASSIGNED_TO_FIELD_REFERENCE)
+    ) {
+      // This indicates inconsistent work item metadata, so child creation cannot provide the expected default.
+      // eslint-disable-next-line no-console
+      console.warn(
+        `Expected ${ASSIGNED_TO_FIELD_REFERENCE} to be available when creating a child work item`,
+      );
+    }
+
     setFieldValues((current) => {
       const next: Record<string, JsonValue> = {};
       for (const field of createFields) {
@@ -159,13 +174,15 @@ export default function CreateWorkItemDialog({
           next[field.referenceName] = current[field.referenceName];
         } else if (field.referenceName === AREA_PATH_FIELD_REFERENCE) {
           next[field.referenceName] = getSavedConfig()?.areaPath ?? null;
+        } else if (field.referenceName === ASSIGNED_TO_FIELD_REFERENCE && parentWorkItem) {
+          next[field.referenceName] = parentWorkItem.assigned_to;
         } else {
           next[field.referenceName] = null;
         }
       }
       return next;
     });
-  }, [createFields]);
+  }, [createFields, isFieldMetadataLoading, parentWorkItem]);
 
   function updateField(referenceName: string, value: JsonValue) {
     setFieldValues((current) => ({ ...current, [referenceName]: value }));
